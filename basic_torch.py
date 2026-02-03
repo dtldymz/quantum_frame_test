@@ -735,6 +735,6 @@ if __name__ == "__main__":
 
     # --- Test RZZ with stack ---
     print("\n--- RZZ with stack Test ---")
-    rzz_gate = RZZ(torch.tensor(0.8))
+    rzz_gate = _RZZ(torch.tensor(0.8))
     print(f"RZZ(0.8) gate matrix:\n{rzz_gate}")
 
