@@ -8,7 +8,7 @@ from mindspore import value_and_grad # For automatic differentiation
 # 指定在 Ascend 设备上运行
 context.set_context(device_target="Ascend", device_id=0) # device_id 选择具体的 NPU ID
 
-def Matrix_Product(*matrices):
+def matrix_product(*matrices):
     """
     对多个矩阵进行连乘运算 (从左到右依次相乘)
     参数:
@@ -34,7 +34,7 @@ def Matrix_Product(*matrices):
         result = ops.matmul(result, matrices[i])
     return result
 
-def Tensor_Product(*matrices):
+def tensor_product(*matrices):
     """
     计算多个矩阵的张量积（Kronecker积）
     参数:
@@ -61,7 +61,7 @@ def Tensor_Product(*matrices):
         result = ops.kron(result, matrices[i])
     return result
 
-def Dagger(matrix):
+def dagger(matrix):
     """
     计算矩阵的共轭转置（dagger操作）
     参数:
@@ -83,10 +83,10 @@ sqrt2_tensor = Tensor(sqrt2_val, dtype=ms.complex64)
 KET_PLUS = (KET_0 + KET_1) / sqrt2_tensor   # |+> = (|0> + |1>)/sqrt(2)
 KET_MINUS = (KET_0 - KET_1) / sqrt2_tensor
 # 对应的 bra 态 (行向量，ket的共轭转置)
-BRA_0 = Dagger(KET_0)  # <0|
-BRA_1 = Dagger(KET_1)  # <1|
-BRA_PLUS = Dagger(KET_PLUS)   # <+|
-BRA_MINUS = Dagger(KET_MINUS)
+BRA_0 = dagger(KET_0)  # <0|
+BRA_1 = dagger(KET_1)  # <1|
+BRA_PLUS = dagger(KET_PLUS)   # <+|
+BRA_MINUS = dagger(KET_MINUS)
 DENSITY_0 = Tensor([[1., 0.],
                     [0., 0.]], dtype=ms.complex64)  # |0><0|
 DENSITY_1 = Tensor([[0., 0.],
@@ -94,37 +94,37 @@ DENSITY_1 = Tensor([[0., 0.],
 IDENTITY_2 = Tensor([[1., 0.],
                      [0., 1.]], dtype=ms.complex64)  # 单位矩阵 I
 
-def IDENTITY(n_qubits=1):
+def identity(n_qubits=1):
     """Identity gate for n qubits."""
     dim = 2 ** n_qubits
     return ops.eye(dim, dtype=ms.complex64)
 
-def _PAULI_X(target_qubit=0):
+def _pauli_x(target_qubit=0):
     pauli_x = Tensor([[0.+0.j, 1.+0.j], [1.+0.j, 0.+0.j]], dtype=ms.complex64)
     if target_qubit > 0:
-        pauli_x = ops.kron(IDENTITY(target_qubit), pauli_x)
+        pauli_x = ops.kron(identity(target_qubit), pauli_x)
     return pauli_x
 
-def _PAULI_Y(target_qubit=0):
+def _pauli_y(target_qubit=0):
     pauli_y = Tensor([[0.+0.j, -1j], [1j, 0.+0.j]], dtype=ms.complex64)
     if target_qubit > 0:
-        pauli_y = ops.kron(IDENTITY(target_qubit), pauli_y)
+        pauli_y = ops.kron(identity(target_qubit), pauli_y)
     return pauli_y
 
-def _PAULI_Z(target_qubit=0):
+def _pauli_z(target_qubit=0):
     pauli_z = Tensor([[1.+0.j, 0.+0.j], [0.+0.j, -1.+0.j]], dtype=ms.complex64)
     if target_qubit > 0:
-        pauli_z = ops.kron(IDENTITY(target_qubit), pauli_z)
+        pauli_z = ops.kron(identity(target_qubit), pauli_z)
     return pauli_z
 
-def _HADAMARD(target_qubit=0):
+def _hadamard(target_qubit=0):
     sqrt2_inv = 1.0 / mnp.sqrt(Tensor(2.0, dtype=ms.complex64))
     hadamard = Tensor([[sqrt2_inv, sqrt2_inv], [sqrt2_inv, -sqrt2_inv]], dtype=ms.complex64)
     if target_qubit > 0:
-        hadamard = ops.kron(IDENTITY(target_qubit), hadamard)
+        hadamard = ops.kron(identity(target_qubit), hadamard)
     return hadamard
 
-def _RX(theta, target_qubit=0):
+def _rx(theta, target_qubit=0):
     """Single qubit rotation around the X axis by angle theta."""
     # 确保 theta 是一个 Tensor
     if not isinstance(theta, Tensor):
@@ -148,12 +148,12 @@ def _RX(theta, target_qubit=0):
         rx_matrix = ops.squeeze(rx_matrix, axis=0)
 
     if target_qubit > 0:
-        # 假设 IDENTITY(target_qubit) 返回一个合适的单位矩阵
-        identity_block = IDENTITY(target_qubit) # 需要确保这个函数返回正确形状的复数单位矩阵
+        # 假设 identity(target_qubit) 返回一个合适的单位矩阵
+        identity_block = identity(target_qubit) # 需要确保这个函数返回正确形状的复数单位矩阵
         rx_matrix = ops.kron(identity_block, rx_matrix)
     return rx_matrix
 
-def _RY(theta, target_qubit=0):
+def _ry(theta, target_qubit=0):
     """Single qubit rotation around the Y axis by angle theta."""
     # 确保 theta 是一个 Tensor
     if not isinstance(theta, Tensor):
@@ -170,7 +170,7 @@ def _RY(theta, target_qubit=0):
     sin_c_pos = sin_c # Just to make the matrix construction clear
 
     # 修正：使用 ops.stack 构建 2x2 矩阵
-    # RY(θ) = [[cos(θ/2), -sin(θ/2)],
+    # ry(θ) = [[cos(θ/2), -sin(θ/2)],
     #          [sin(θ/2),  cos(θ/2)]]
     row1 = ops.stack([cos_c, neg_sin_c], axis=-1)  # [cos(θ/2), -sin(θ/2)]
     row2 = ops.stack([sin_c_pos, cos_c], axis=-1)  # [sin(θ/2),  cos(θ/2)]
@@ -186,12 +186,12 @@ def _RY(theta, target_qubit=0):
         ry_matrix = ops.squeeze(ry_matrix, axis=0)
 
     if target_qubit > 0:
-        identity_block = IDENTITY(target_qubit)
+        identity_block = identity(target_qubit)
         ry_matrix = ops.kron(identity_block, ry_matrix)
 
     return ry_matrix
 
-def _RZ(theta, target_qubit=0):
+def _rz(theta, target_qubit=0):
     """Single qubit rotation around the Z axis by angle theta."""
     # 确保 theta 是一个 Tensor
     if not isinstance(theta, Tensor):
@@ -201,7 +201,7 @@ def _RZ(theta, target_qubit=0):
     exp_pos = ops.exp(1j * theta / 2)  # Shape: [shape_of_theta]
 
     # 使用 ops.stack 构建 2x2 矩阵
-    # RZ(θ) = [[exp(-1j*θ/2), 0],
+    # rz(θ) = [[exp(-1j*θ/2), 0],
     #          [0,          exp(1j*θ/2)]]
     # 创建零元素（复数零）
     zero_elem = Tensor(0.+0.j, dtype=ms.complex64)
@@ -224,12 +224,12 @@ def _RZ(theta, target_qubit=0):
         rz_matrix = ops.squeeze(rz_matrix, axis=0)
 
     if target_qubit > 0:
-        identity_block = IDENTITY(target_qubit)
+        identity_block = identity(target_qubit)
         rz_matrix = ops.kron(identity_block, rz_matrix)
 
     return rz_matrix
 
-def _S_GATE(target_qubit=0):
+def _s_gate(target_qubit=0):
     s_gate = Tensor([[1.+0.j, 0.+0.j],
                      [0.+0.j, 1j]], dtype=ms.complex64)
     # 使用 ops.stack 重构矩阵（虽然元素是常数）
@@ -238,10 +238,10 @@ def _S_GATE(target_qubit=0):
     s_gate_matrix = ops.stack([row1, row2], axis=-2)
 
     if target_qubit > 0:
-        s_gate_matrix = ops.kron(IDENTITY(target_qubit), s_gate_matrix)
+        s_gate_matrix = ops.kron(identity(target_qubit), s_gate_matrix)
     return s_gate_matrix
 
-def _T_GATE(target_qubit=0):
+def _t_gate(target_qubit=0):
     t_gate_val = ops.exp(1j * Tensor(np.pi, dtype=ms.complex64) / 4) # Use np.pi
     t_gate = Tensor([[1.+0.j, 0.+0.j],
                      [0.+0.j, t_gate_val]], dtype=ms.complex64)
@@ -253,10 +253,10 @@ def _T_GATE(target_qubit=0):
     t_gate_matrix = ops.stack([row1, row2], axis=-2)
 
     if target_qubit > 0:
-        t_gate_matrix = ops.kron(IDENTITY(target_qubit), t_gate_matrix)
+        t_gate_matrix = ops.kron(identity(target_qubit), t_gate_matrix)
     return t_gate_matrix
 
-def _CX(target_qubit, control_qubits, control_states):
+def _cx(target_qubit, control_qubits, control_states):
     """
     受控X门（Controlled X gate）
     参数:
@@ -267,7 +267,7 @@ def _CX(target_qubit, control_qubits, control_states):
     受控X门的矩阵表示
     """
     # 首先获取Pauli_X矩阵
-    px_matrix = _PAULI_X() - IDENTITY_2
+    px_matrix = _pauli_x() - IDENTITY_2
     # 确定所需量子比特总数
     all_qubits = [target_qubit] + control_qubits
     num_qubits = max(all_qubits) + 1
@@ -291,10 +291,10 @@ def _CX(target_qubit, control_qubits, control_states):
     result_matrix = matrices[0]
     for i in range(1, len(matrices)):
         result_matrix = ops.kron(result_matrix, matrices[i])
-    result_matrix = IDENTITY(num_qubits) + result_matrix
+    result_matrix = identity(num_qubits) + result_matrix
     return result_matrix
 
-def _CY(target_qubit, control_qubits, control_states):
+def _cy(target_qubit, control_qubits, control_states):
     """
     受控Y门（Controlled Y gate）
     参数:
@@ -305,7 +305,7 @@ def _CY(target_qubit, control_qubits, control_states):
     受控Y门的矩阵表示
     """
     # 首先获取Pauli_Y矩阵
-    py_matrix = _PAULI_Y() - IDENTITY_2
+    py_matrix = _pauli_y() - IDENTITY_2
     # 确定所需量子比特总数
     all_qubits = [target_qubit] + control_qubits
     num_qubits = max(all_qubits) + 1
@@ -329,10 +329,10 @@ def _CY(target_qubit, control_qubits, control_states):
     result_matrix = matrices[0]
     for i in range(1, len(matrices)):
         result_matrix = ops.kron(result_matrix, matrices[i])
-    result_matrix = IDENTITY(num_qubits) + result_matrix
+    result_matrix = identity(num_qubits) + result_matrix
     return result_matrix
 
-def _CZ(target_qubit, control_qubits, control_states):
+def _cz(target_qubit, control_qubits, control_states):
     """
     受控Z门（Controlled Z gate）
     参数:
@@ -343,7 +343,7 @@ def _CZ(target_qubit, control_qubits, control_states):
     受控Y门的矩阵表示
     """
     # 首先获取Pauli_Z矩阵
-    pz_matrix = _PAULI_Z() - IDENTITY_2
+    pz_matrix = _pauli_z() - IDENTITY_2
     # 确定所需量子比特总数
     all_qubits = [target_qubit] + control_qubits
     num_qubits = max(all_qubits) + 1
@@ -367,22 +367,22 @@ def _CZ(target_qubit, control_qubits, control_states):
     result_matrix = matrices[0]
     for i in range(1, len(matrices)):
         result_matrix = ops.kron(result_matrix, matrices[i])
-    result_matrix = IDENTITY(num_qubits) + result_matrix
+    result_matrix = identity(num_qubits) + result_matrix
     return result_matrix
 
-def _CRX(theta, target_qubit, control_qubits, control_states):
+def _crx(theta, target_qubit, control_qubits, control_states):
     """
-    受控RX门（Controlled RX gate）
+    受控rx门（Controlled rx gate）
     参数:
-    theta: RX旋转角度
+    theta: rx旋转角度
     target_qubit: 目标量子比特的索引
     control_qubits: 控制量子比特的索引列表
     control_states: 控制量子比特的状态列表（0或1）
     返回:
-    受控RX门的矩阵表示
+    受控rx门的矩阵表示
     """
-    # 首先获取RX门矩阵 (注意：这里减去单位矩阵)
-    rx_base = _RX(theta) - IDENTITY_2
+    # 首先获取rx门矩阵 (注意：这里减去单位矩阵)
+    rx_base = _rx(theta) - IDENTITY_2
     # 确定所需量子比特总数
     all_qubits = [target_qubit] + control_qubits
     num_qubits = max(all_qubits) + 1
@@ -407,22 +407,22 @@ def _CRX(theta, target_qubit, control_qubits, control_states):
     for i in range(1, len(matrices)):
         result_matrix = ops.kron(result_matrix, matrices[i])
     # 加上单位矩阵得到完整的受控门 (注意：这里加上单位矩阵)
-    result_matrix = IDENTITY(num_qubits) + result_matrix
+    result_matrix = identity(num_qubits) + result_matrix
     return result_matrix
 
-def _CRY(theta, target_qubit, control_qubits, control_states):
+def _cry(theta, target_qubit, control_qubits, control_states):
     """
-    受控RY门（Controlled RY gate）
+    受控ry门（Controlled ry gate）
     参数:
-    theta: RY旋转角度
+    theta: ry旋转角度
     target_qubit: 目标量子比特的索引
     control_qubits: 控制量子比特的索引列表
     control_states: 控制量子比特的状态列表（0或1）
     返回:
-    受控RY门的矩阵表示
+    受控ry门的矩阵表示
     """
-    # 首先获取RY门矩阵 (注意：这里减去单位矩阵)
-    ry_base = _RY(theta) - IDENTITY_2
+    # 首先获取ry门矩阵 (注意：这里减去单位矩阵)
+    ry_base = _ry(theta) - IDENTITY_2
     # 确定所需量子比特总数
     all_qubits = [target_qubit] + control_qubits
     num_qubits = max(all_qubits) + 1
@@ -447,22 +447,22 @@ def _CRY(theta, target_qubit, control_qubits, control_states):
     for i in range(1, len(matrices)):
         result_matrix = ops.kron(result_matrix, matrices[i])
     # 加上单位矩阵得到完整的受控门 (注意：这里加上单位矩阵)
-    result_matrix = IDENTITY(num_qubits) + result_matrix
+    result_matrix = identity(num_qubits) + result_matrix
     return result_matrix
 
-def _CRZ(theta, target_qubit, control_qubits, control_states):
+def _crz(theta, target_qubit, control_qubits, control_states):
     """
-    受控RZ门（Controlled RZ gate）
+    受控rz门（Controlled rz gate）
     参数:
-    theta: RZ旋转角度
+    theta: rz旋转角度
     target_qubit: 目标量子比特的索引
     control_qubits: 控制量子比特的索引列表
     control_states: 控制量子比特的状态列表（0或1）
     返回:
-    受控RY门的矩阵表示
+    受控ry门的矩阵表示
     """
-    # 首先获取RZ门矩阵 (注意：这里减去单位矩阵)
-    rz_base = _RZ(theta) - IDENTITY_2
+    # 首先获取rz门矩阵 (注意：这里减去单位矩阵)
+    rz_base = _rz(theta) - IDENTITY_2
     # 确定所需量子比特总数
     all_qubits = [target_qubit] + control_qubits
     num_qubits = max(all_qubits) + 1
@@ -487,18 +487,18 @@ def _CRZ(theta, target_qubit, control_qubits, control_states):
     for i in range(1, len(matrices)):
         result_matrix = ops.kron(result_matrix, matrices[i])
     # 加上单位矩阵得到完整的受控门 (注意：这里加上单位矩阵)
-    result_matrix = IDENTITY(num_qubits) + result_matrix
+    result_matrix = identity(num_qubits) + result_matrix
     return result_matrix
 
-def _SWAP(qubit_1=0, qubit_2=1):
-    return Matrix_Product(_CX(qubit_1, [qubit_2], [1]), _CX(qubit_2, [qubit_1], [1]), _CX(qubit_1, [qubit_2], [1]))
+def _swap(qubit_1=0, qubit_2=1):
+    return matrix_product(_cx(qubit_1, [qubit_2], [1]), _cx(qubit_2, [qubit_1], [1]), _cx(qubit_1, [qubit_2], [1]))
 
-def _TOFFOLI(target_qubit=2, control_qubits=[0,1]):
+def _toffoli(target_qubit=2, control_qubits=[0,1]):
     num_qubits = max(target_qubit, max(control_qubits)) + 1
     matrices_0 = [IDENTITY_2] * num_qubits
     matrices_0[control_qubits[0]] = DENSITY_1
     matrices_0[control_qubits[1]] = DENSITY_1
-    matrices_0[target_qubit] = _PAULI_X()
+    matrices_0[target_qubit] = _pauli_x()
     result_0 = matrices_0[0]
     for i in range(1, num_qubits):
         result_0 = ops.kron(result_0, matrices_0[i])
@@ -515,8 +515,8 @@ def _TOFFOLI(target_qubit=2, control_qubits=[0,1]):
         result_2 = ops.kron(result_2, matrices_2[i])
     return result_0 + result_1 + result_2
 
-def _U3(theta, phi, lam, target_qubit=0):
-    """General single-qubit rotation gate U3."""
+def _u3(theta, phi, lam, target_qubit=0):
+    """General single-qubit rotation gate u3."""
     # 确保参数是 Tensor
     if not isinstance(theta, Tensor):
         theta = Tensor(theta, dtype=ms.complex64)
@@ -531,21 +531,21 @@ def _U3(theta, phi, lam, target_qubit=0):
     exp_ilam = ops.exp(1j * lam)
     exp_iphi_lam = ops.exp(1j * (phi + lam))
 
-    # 使用 ops.stack 构建 U3 矩阵
+    # 使用 ops.stack 构建 u3 矩阵
     row1 = ops.stack([cos, -exp_ilam * sin], axis=-1)  # [cos, -exp(-i*lam) * sin]
     row2 = ops.stack([exp_iphi * sin, exp_iphi_lam * cos], axis=-1)  # [exp(i*phi) * sin, exp(i*(phi+lam)) * cos]
     u3_matrix = ops.stack([row1, row2], axis=-2)
 
     if target_qubit > 0:
-        u3_matrix = ops.kron(IDENTITY(target_qubit), u3_matrix)
+        u3_matrix = ops.kron(identity(target_qubit), u3_matrix)
     return u3_matrix
 
-def _U2(phi, lam, target_qubit=0):
-    """Single-qubit rotation gate U2."""
+def _u2(phi, lam, target_qubit=0):
+    """Single-qubit rotation gate u2."""
     # Use np.pi
-    return _U3(Tensor(np.pi, dtype=ms.complex64)/2, phi, lam, target_qubit)
+    return _u3(Tensor(np.pi, dtype=ms.complex64)/2, phi, lam, target_qubit)
 
-def RZZ(theta):
+def _rzz(theta):
     """
     RZZ门（控制Z旋转门）
     作用在两个量子比特上，实现条件相位旋转
@@ -576,7 +576,7 @@ def RZZ(theta):
 
     return rzz_matrix
 
-def Gate_To_Matrix(gate, cir_qubits=1):
+def gate_to_matrix(gate, cir_qubits=1):
     """
     将单个门的信息转换为矩阵
     参数:
@@ -589,71 +589,71 @@ def Gate_To_Matrix(gate, cir_qubits=1):
     gate_type = gate['type']
     gate_parameter = gate.get('parameter', None)
     # 单量子比特门：
-    if gate_type in ['PAULI_X', 'X']:
+    if gate_type in ['pauli_x', 'X']:
         gate_qubits = gate['target_qubit'] + 1
-        gate_matrix = _PAULI_X(gate['target_qubit'])
-    elif gate_type in ['PAULI_Y', 'Y']:
+        gate_matrix = _pauli_x(gate['target_qubit'])
+    elif gate_type in ['pauli_y', 'Y']:
         gate_qubits = gate['target_qubit'] + 1
-        gate_matrix = _PAULI_Y(gate['target_qubit'])
-    elif gate_type in ['PAULI_Z', 'Z']:
+        gate_matrix = _pauli_y(gate['target_qubit'])
+    elif gate_type in ['pauli_z', 'Z']:
         gate_qubits = gate['target_qubit'] + 1
-        gate_matrix = _PAULI_Z(gate['target_qubit'])
-    elif gate_type in ['HADAMARD', 'H']:
+        gate_matrix = _pauli_z(gate['target_qubit'])
+    elif gate_type in ['hadamard', 'H']:
         gate_qubits = gate['target_qubit'] + 1
-        gate_matrix = _HADAMARD(gate['target_qubit'])
-    elif gate_type in ['S_GATE', 'S']:
+        gate_matrix = _hadamard(gate['target_qubit'])
+    elif gate_type in ['s_gate', 'S']:
         gate_qubits = gate['target_qubit'] + 1
-        gate_matrix = _S_GATE(gate['target_qubit'])
-    elif gate_type in ['T_GATE', 'T']:
+        gate_matrix = _s_gate(gate['target_qubit'])
+    elif gate_type in ['t_gate', 'T']:
         gate_qubits = gate['target_qubit'] + 1
-        gate_matrix = _T_GATE(gate['target_qubit'])
-    elif gate_type == 'RX':
+        gate_matrix = _t_gate(gate['target_qubit'])
+    elif gate_type == 'rx':
         gate_qubits = gate['target_qubit'] + 1
-        gate_matrix = _RX(gate_parameter, gate['target_qubit'])
-    elif gate_type == 'RY':
+        gate_matrix = _rx(gate_parameter, gate['target_qubit'])
+    elif gate_type == 'ry':
         gate_qubits = gate['target_qubit'] + 1
-        gate_matrix = _RY(gate_parameter, gate['target_qubit'])
-    elif gate_type == 'RZ':
+        gate_matrix = _ry(gate_parameter, gate['target_qubit'])
+    elif gate_type == 'rz':
         gate_qubits = gate['target_qubit'] + 1
-        gate_matrix = _RZ(gate_parameter, gate['target_qubit'])
-    elif gate_type == 'U3':
+        gate_matrix = _rz(gate_parameter, gate['target_qubit'])
+    elif gate_type == 'u3':
         gate_qubits = gate['target_qubit'] + 1
-        gate_matrix = _U3(gate_parameter[0], gate_parameter[1], gate_parameter[2], gate['target_qubit'])
-    elif gate_type == 'U2':
+        gate_matrix = _u3(gate_parameter[0], gate_parameter[1], gate_parameter[2], gate['target_qubit'])
+    elif gate_type == 'u2':
         gate_qubits = gate['target_qubit'] + 1
-        gate_matrix = _U2(gate_parameter[0], gate_parameter[1],  gate['target_qubit'])
+        gate_matrix = _u2(gate_parameter[0], gate_parameter[1],  gate['target_qubit'])
     # 两量子比特门：
-    elif gate_type in ['CNOT', 'CX']:
+    elif gate_type in ['cnot', 'cx']:
         gate_qubits = max(gate['target_qubit'], max(gate['control_qubits'])) + 1
-        gate_matrix = _CX(target_qubit=gate['target_qubit'], control_qubits=gate['control_qubits'], control_states=gate['control_states'])
-    elif gate_type == 'CY':
+        gate_matrix = _cx(target_qubit=gate['target_qubit'], control_qubits=gate['control_qubits'], control_states=gate['control_states'])
+    elif gate_type == 'cy':
         gate_qubits = max(gate['target_qubit'], max(gate['control_qubits'])) + 1
-        gate_matrix = _CY(target_qubit=gate['target_qubit'], control_qubits=gate['control_qubits'], control_states=gate['control_states'])
-    elif gate_type == 'CZ':
+        gate_matrix = _cy(target_qubit=gate['target_qubit'], control_qubits=gate['control_qubits'], control_states=gate['control_states'])
+    elif gate_type == 'cz':
         gate_qubits = max(gate['target_qubit'], max(gate['control_qubits'])) + 1
-        gate_matrix = _CZ(target_qubit=gate['target_qubit'], control_qubits=gate['control_qubits'], control_states=gate['control_states'])
-    elif gate_type == 'CRX':
+        gate_matrix = _cz(target_qubit=gate['target_qubit'], control_qubits=gate['control_qubits'], control_states=gate['control_states'])
+    elif gate_type == 'crx':
         gate_qubits = max(gate['target_qubit'], max(gate['control_qubits'])) + 1
-        gate_matrix = _CRX(gate_parameter, target_qubit=gate['target_qubit'], control_qubits=gate['control_qubits'],
+        gate_matrix = _crx(gate_parameter, target_qubit=gate['target_qubit'], control_qubits=gate['control_qubits'],
                            control_states=gate['control_states'])
-    elif gate_type == 'CRY':
+    elif gate_type == 'cry':
         gate_qubits = max(gate['target_qubit'], max(gate['control_qubits'])) + 1
-        gate_matrix = _CRY(gate_parameter, target_qubit=gate['target_qubit'], control_qubits=gate['control_qubits'],
+        gate_matrix = _cry(gate_parameter, target_qubit=gate['target_qubit'], control_qubits=gate['control_qubits'],
                            control_states=gate['control_states'])
-    elif gate_type == 'CRZ':
+    elif gate_type == 'crz':
         gate_qubits = max(gate['target_qubit'], max(gate['control_qubits'])) + 1
-        gate_matrix = _CRZ(gate_parameter, target_qubit=gate['target_qubit'], control_qubits=gate['control_qubits'],
+        gate_matrix = _crz(gate_parameter, target_qubit=gate['target_qubit'], control_qubits=gate['control_qubits'],
                            control_states=gate['control_states'])
-    elif gate_type == 'SWAP':
+    elif gate_type == 'swap':
         gate_qubits = max(gate['qubit_1'], gate['qubit_2']) + 1
-        gate_matrix = _SWAP(qubit_1=gate['qubit_1'], qubit_2=gate['qubit_2'])
+        gate_matrix = _swap(qubit_1=gate['qubit_1'], qubit_2=gate['qubit_2'])
     # 三量子比特门：
-    elif gate_type == 'TOFFOLI':
+    elif gate_type == 'toffoli':
         gate_qubits = max(gate['target_qubit'], gate['control_qubits'][0], gate['control_qubits'][1]) + 1
-        gate_matrix = _TOFFOLI(target_qubit=gate['target_qubit'], control_qubits=gate['control_qubits'])
+        gate_matrix = _toffoli(target_qubit=gate['target_qubit'], control_qubits=gate['control_qubits'])
     # 恒等门
-    elif gate_type in ['IDENTITY', 'I']:
-        return IDENTITY(gate['num_qubits'])
+    elif gate_type in ['identity', 'I']:
+        return identity(gate['num_qubits'])
     else:
         raise ValueError(f"不支持的门类型: {gate_type}")
 
@@ -674,16 +674,16 @@ if __name__ == "__main__":
 
     # 定义一个计算概率的函数（需要对 theta 求导）
     def compute_prob(theta_val):
-        # 应用 RX(theta) 门
-        rx_gate = _RX(theta_val)
+        # 应用 rx(theta) 门
+        rx_gate = _rx(theta_val)
         # 假设这是一个简单的演化 U|psi>
         evolved_state = ops.matmul(rx_gate, psi)
 
         # 计算一个简单的实数输出，例如 <psi_out|Z|psi_out> (Z 是泡利Z算符)
         # 这里我们用 <0| evolved_state 来模拟一个简单的期望值计算
-        bra_0 = Dagger(psi) # <0|
-        overlap = ops.matmul(bra_0, evolved_state) # <0|RX(theta)|0>
-        # 取模长平方 |<0|RX(theta)|0>|^2
+        bra_0 = dagger(psi) # <0|
+        overlap = ops.matmul(bra_0, evolved_state) # <0|rx(theta)|0>
+        # 取模长平方 |<0|rx(theta)|0>|^2
         prob_0 = ops.real(ops.abs(overlap)**2) # This is a real scalar
         # MindSpore 的自动微分需要标量输出
         # prob_0 是一个 0 维张量
@@ -694,46 +694,46 @@ if __name__ == "__main__":
     prob_0_val, grad_theta = prob_and_grad_func(theta)
 
     print(f"Input theta: {theta.asnumpy()}")
-    print(f"Probability of |0> after RX({theta.asnumpy()}): {prob_0_val.asnumpy()}")
+    print(f"Probability of |0> after rx({theta.asnumpy()}): {prob_0_val.asnumpy()}")
     print(f"Gradient of probability w.r.t. theta: {grad_theta.asnumpy()}")
 
     # --- 测试矩阵乘积和张量积 ---
     print("\n--- Matrix Product Test ---")
-    I2 = IDENTITY(1) # 2x2 identity
-    X = _PAULI_X()
-    IX = Tensor_Product(I2, X) # I \otimes X
-    XX = _PAULI_X(1) # X on qubit 1 (with I on qubit 0)
-    print(f"I kron X:\n{IX}")
-    print(f"X on qubit 1:\n{XX}")
-    print(f"Are they equal? {ops.allclose(IX, XX).asnumpy()}")
+    i2 = identity(1) # 2x2 identity
+    x = _pauli_x()
+    ix = tensor_product(i2, x) # I \otimes X
+    xx = _pauli_x(1) # X on qubit 1 (with I on qubit 0)
+    print(f"I kron X:\n{ix}")
+    print(f"X on qubit 1:\n{xx}")
+    print(f"Are they equal? {ops.allclose(ix, xx).asnumpy()}")
 
     print("\n--- Gate Matrix Conversion Test ---")
-    gate_info = {'type': 'RX', 'target_qubit': 0, 'parameter': Tensor(0.5, dtype=ms.complex64)}
-    rx_mat = Gate_To_Matrix(gate_info, cir_qubits=2) # Should expand to 2 qubits
-    print(f"RX(0.5) gate matrix (2 qubits):\n{rx_mat}")
+    gate_info = {'type': 'rx', 'target_qubit': 0, 'parameter': Tensor(0.5, dtype=ms.complex64)}
+    rx_mat = gate_to_matrix(gate_info, cir_qubits=2) # Should expand to 2 qubits
+    print(f"rx(0.5) gate matrix (2 qubits):\n{rx_mat}")
     print(f"Shape: {rx_mat.shape}")
 
-    # --- Test _RZ with stack ---
-    print("\n--- _RZ with stack Test ---")
-    rz_gate = _RZ(Tensor(0.7))
-    print(f"RZ(0.7) gate matrix:\n{rz_gate}")
+    # --- Test _rz with stack ---
+    print("\n--- _rz with stack Test ---")
+    rz_gate = _rz(Tensor(0.7))
+    print(f"rz(0.7) gate matrix:\n{rz_gate}")
 
-    # --- Test _S_GATE with stack ---
-    print("\n--- _S_GATE with stack Test ---")
-    s_gate = _S_GATE()
+    # --- Test _s_gate with stack ---
+    print("\n--- _s_gate with stack Test ---")
+    s_gate = _s_gate()
     print(f"S gate matrix:\n{s_gate}")
 
-    # --- Test _T_GATE with stack ---
-    print("\n--- _T_GATE with stack Test ---")
-    t_gate = _T_GATE()
+    # --- Test _t_gate with stack ---
+    print("\n--- _t_gate with stack Test ---")
+    t_gate = _t_gate()
     print(f"T gate matrix:\n{t_gate}")
 
-    # --- Test _U3 with stack ---
-    print("\n--- _U3 with stack Test ---")
-    u3_gate = _U3(Tensor(0.1), Tensor(0.2), Tensor(0.3))
-    print(f"U3(0.1, 0.2, 0.3) gate matrix:\n{u3_gate}")
+    # --- Test _u3 with stack ---
+    print("\n--- _u3 with stack Test ---")
+    u3_gate = _u3(Tensor(0.1), Tensor(0.2), Tensor(0.3))
+    print(f"u3(0.1, 0.2, 0.3) gate matrix:\n{u3_gate}")
 
     # --- Test RZZ with stack ---
     print("\n--- RZZ with stack Test ---")
-    rzz_gate = RZZ(Tensor(0.8))
+    rzz_gate = _rzz(Tensor(0.8))
     print(f"RZZ(0.8) gate matrix:\n{rzz_gate}")
