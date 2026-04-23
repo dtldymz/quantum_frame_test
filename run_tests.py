@@ -68,12 +68,30 @@ def run_define_torch_tests():
 
     print("\n=== define_torch tests ===")
     psi0 = dt.phi_0(2)
-    bell_circuit = dt.circuit(dt.hadamard(0), dt.cnot(1, [0]), num_qubits=2)
+    bell_circuit = dt.Circuit(dt.hadamard(0), dt.cnot(1, [0]), num_qubits=2).unitary()
     bell_state = torch.matmul(bell_circuit, psi0)
     exp_identity = dt.expectation(bell_state, dt.identity(2))
 
     print(f"bell_state shape: {bell_state.shape}")
     print(f"expectation on I: {exp_identity.item()}")
+
+    c1 = dt.Circuit(dt.pauli_x(0), dt.pauli_y(1), num_qubits=2)
+    c2 = dt.Circuit(dt.cnot(1, [0]), num_qubits=2)
+    c_big = c1 + c2
+    u_big = c_big.unitary()
+    u_ref = dt.Circuit(dt.pauli_x(0), dt.pauli_y(1), dt.cnot(1, [0]), num_qubits=2).unitary()
+    print(f"Circuit '+' composition correct: {torch.allclose(u_big, u_ref)}")
+
+    # Keep backward compatibility check for functional alias.
+    u_alias = dt.circuit(dt.pauli_x(0), dt.pauli_y(1), dt.cnot(1, [0]), num_qubits=2)
+    print(f"circuit() alias to Circuit correct: {torch.allclose(u_alias, u_ref)}")
+
+    # num_qubits must match when using +
+    try:
+        _ = dt.Circuit(dt.pauli_x(0), num_qubits=1) + dt.Circuit(dt.pauli_x(0), num_qubits=2)
+        print("Circuit '+' num_qubits check: False")
+    except ValueError:
+        print("Circuit '+' num_qubits check: True")
 
 
 def run_basic_mind_tests():
