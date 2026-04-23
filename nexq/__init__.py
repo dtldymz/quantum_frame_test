@@ -1,6 +1,7 @@
 # nexq — 量子模拟器顶层包
 from .channel.backends.torch_backend import TorchBackend
 from .channel.backends.numpy_backend import NumpyBackend
+from .channel.backends.npu_backend import NPUBackend, NPURuntimeContext, npu_runtime_context_from_env
 from .channel.states.state_vector import StateVector
 from .channel.states.density_matrix import DensityMatrix
 from .channel.operators import PauliOp, PauliString, Hamiltonian
@@ -57,6 +58,9 @@ from .circuit.io.qasm import (
 __all__ = [
     "TorchBackend",
     "NumpyBackend",
+    "NPUBackend",
+    "NPURuntimeContext",
+    "npu_runtime_context_from_env",
     "StateVector",
     "DensityMatrix",
     "PauliOp",

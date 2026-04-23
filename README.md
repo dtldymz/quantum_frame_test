@@ -4,6 +4,7 @@
 
 - 状态矢量与密度矩阵两种执行模式
 - NumPy / PyTorch 后端
+- Ascend NPU 后端（基于 torch_npu）
 - 期望值与方差计算
 - 批量执行与参数扫描
 - 噪声模型（Kraus 通道）
@@ -22,6 +23,8 @@ pip install numpy torch
 ```
 
 如果你仅使用 `NumpyBackend`，理论上只需 `numpy`。
+
+如果你使用 Ascend NPU 后端，请额外安装并配置 `torch_npu` 与 Ascend 运行时。
 
 ## 2. 核心模块总览
 
@@ -45,7 +48,7 @@ pip install numpy torch
 
 - 使用 `Circuit`、`hadamard`、`cnot`、`rx/ry/rz`、`cx/cy/cz`、`u2/u3`、`swap`、`toffoli`：`from nexq import Circuit, hadamard, cnot, rx, ry, rz, cx, cy, cz, u2, u3, swap, toffoli`
 - 使用 `Measure`、`Result`：`from nexq import Measure, Result`
-- 使用 `TorchBackend`、`NumpyBackend`：`from nexq import TorchBackend, NumpyBackend`
+- 使用 `TorchBackend`、`NumpyBackend`、`NPUBackend`：`from nexq import TorchBackend, NumpyBackend, NPUBackend`
 - 使用 `NoiseModel`、`BitFlipChannel`、`PhaseFlipChannel`、`DepolarizingChannel`、`AmplitudeDampingChannel`：`from nexq import NoiseModel, BitFlipChannel, PhaseFlipChannel, DepolarizingChannel, AmplitudeDampingChannel`
 - 使用 `Hamiltonian`、`PauliOp`、`PauliString`：`from nexq import Hamiltonian, PauliOp, PauliString`
 - 使用 JSON I/O：`from nexq import circuit_to_json, circuit_from_json, save_circuit_json, load_circuit_json`
@@ -57,6 +60,24 @@ pip install numpy torch
 - 你可以直接用顶层导出的符号；若确实要导入子模块，请使用它的真实路径，例如 `from nexq.circuit.model import Circuit`。
 
 ## 3. 快速开始
+
+### 3.0 多 NPU 运行入口
+
+`nexq` 提供了分布式环境变量自动入口，可读取 `WORLD_SIZE`、`RANK`、`LOCAL_RANK` 并按 `LOCAL_RANK` 选择设备：
+
+```python
+from nexq import NPUBackend
+
+backend = NPUBackend.from_distributed_env(fallback_to_cpu=True)
+print(backend.runtime_context)
+print(backend.name)
+```
+
+建议配合 `torchrun` 使用（进程数即 NPU 数量）：
+
+```bash
+torchrun --nproc_per_node=4 your_script.py
+```
 
 ### 3.1 Bell 态示例（状态矢量）
 
