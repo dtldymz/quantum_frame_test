@@ -6,9 +6,10 @@ quantum_sim/execution/engine.py
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
 import numpy as np
+from Circuit import Circuit as LegacyCircuit
 
 from ..core.states import DensityMatrix, StateVector
 from .result import ExecutionResult
@@ -140,6 +141,7 @@ class ExecutionEngine:
         shots: Optional[int] = None,
         initial_density_matrix=None,
         observables: Optional[Dict[str, object]] = None,
+        noise_model=None,
         return_state: bool = True,
     ) -> ExecutionResult:
         """
@@ -150,6 +152,7 @@ class ExecutionEngine:
             shots: 采样次数；为 None 或 0 时不采样，仅返回概率
             initial_density_matrix: 初始密度矩阵（None 表示 |0...0><0...0|）
             observables: 可观测量字典 {name: operator_matrix}
+            noise_model: NoiseModel，可选。若提供且电路具有 gates，则在每个门后施加噪声。
             return_state: 是否在结果中附带最终密度矩阵（flatten 一维）
         """
         if not hasattr(circuit, "n_qubits") or not hasattr(circuit, "unitary"):
@@ -164,10 +167,25 @@ class ExecutionEngine:
             initial_density_matrix=initial_density_matrix,
         )
 
-        unitary_raw = circuit.unitary()
-        unitary = self.backend.cast(self.backend.to_numpy(unitary_raw))
+        rho = rho0
+        if noise_model is not None and hasattr(circuit, "gates"):
+            # 有噪声时采用逐门演化，确保可在门间插入噪声通道。
+            for gate in circuit.gates:
+                gate_unitary_raw = LegacyCircuit(gate, n_qubits=n_qubits).unitary()
+                gate_unitary = self.backend.cast(self.backend.to_numpy(gate_unitary_raw))
+                rho = rho.evolve(gate_unitary)
+                rho_noisy = noise_model.apply(
+                    rho.data,
+                    n_qubits=n_qubits,
+                    backend=self.backend,
+                    gate_type=gate.get("type"),
+                )
+                rho = DensityMatrix(rho_noisy, n_qubits, self.backend)
+        else:
+            unitary_raw = circuit.unitary()
+            unitary = self.backend.cast(self.backend.to_numpy(unitary_raw))
+            rho = rho.evolve(unitary)
 
-        rho = rho0.evolve(unitary)
         probs = rho.probabilities()
         probs_backend = self.backend.cast(probs)
 
@@ -205,5 +223,118 @@ class ExecutionEngine:
                 "engine": "ExecutionEngine",
                 "circuit_type": type(circuit).__name__,
                 "state_mode": "density_matrix",
+                "noise_model": type(noise_model).__name__ if noise_model is not None else None,
             },
         )
+
+    def run_batch(
+        self,
+        circuits: Sequence[object],
+        shots: Optional[int] = None,
+        observables: Optional[Dict[str, object]] = None,
+        mode: str = "state_vector",
+        per_circuit_options: Optional[Sequence[Dict[str, Any]]] = None,
+    ) -> List[ExecutionResult]:
+        """
+        批量运行多个电路。
+
+        参数:
+            circuits: 电路序列，每个元素需具备 n_qubits 和 unitary()
+            shots: 全局采样次数（可被 per_circuit_options 覆盖）
+            observables: 全局可观测量字典（可被 per_circuit_options 覆盖）
+            mode: "state_vector" 或 "density_matrix"
+            per_circuit_options: 每个电路的附加参数字典序列，长度需与 circuits 相同
+                支持键:
+                - shots
+                - observables
+                - initial_state
+                - initial_density_matrix
+                - noise_model
+                - return_state
+                - label
+        返回:
+            ExecutionResult 列表，顺序与输入 circuits 一致
+        """
+        if not isinstance(circuits, Sequence) or len(circuits) == 0:
+            raise ValueError("circuits 必须是非空序列")
+
+        if per_circuit_options is not None and len(per_circuit_options) != len(circuits):
+            raise ValueError("per_circuit_options 长度必须与 circuits 一致")
+
+        mode_norm = mode.strip().lower()
+        if mode_norm not in {"state_vector", "density_matrix"}:
+            raise ValueError("mode 仅支持 'state_vector' 或 'density_matrix'")
+
+        results: List[ExecutionResult] = []
+        for idx, circ in enumerate(circuits):
+            opts = per_circuit_options[idx] if per_circuit_options is not None else {}
+            run_shots = opts.get("shots", shots)
+            run_observables = opts.get("observables", observables)
+            run_return_state = opts.get("return_state", True)
+            label = opts.get("label")
+
+            if mode_norm == "state_vector":
+                result = self.run(
+                    circ,
+                    shots=run_shots,
+                    initial_state=opts.get("initial_state"),
+                    observables=run_observables,
+                    return_state=run_return_state,
+                )
+            else:
+                result = self.run_density_matrix(
+                    circ,
+                    shots=run_shots,
+                    initial_density_matrix=opts.get("initial_density_matrix"),
+                    observables=run_observables,
+                    noise_model=opts.get("noise_model"),
+                    return_state=run_return_state,
+                )
+
+            result.metadata["batch_index"] = idx
+            if label is not None:
+                result.metadata["label"] = str(label)
+            results.append(result)
+
+        return results
+
+    def scan_parameters(
+        self,
+        circuit_builder: Callable[[Any], object],
+        param_values: Iterable[Any],
+        shots: Optional[int] = None,
+        observables: Optional[Dict[str, object]] = None,
+        mode: str = "state_vector",
+        return_state: bool = False,
+    ) -> List[ExecutionResult]:
+        """
+        参数扫描：针对一组参数值构造电路并批量执行。
+
+        参数:
+            circuit_builder: 参数 -> 电路 的构造函数
+            param_values: 参数值可迭代对象
+            shots: 采样次数
+            observables: 可观测量字典
+            mode: "state_vector" 或 "density_matrix"
+            return_state: 是否在结果中附带末态
+        返回:
+            ExecutionResult 列表，每个结果 metadata 包含 `scan_param`
+        """
+        params = list(param_values)
+        if len(params) == 0:
+            raise ValueError("param_values 不能为空")
+
+        circuits = [circuit_builder(p) for p in params]
+        options = [{"return_state": return_state, "label": f"scan_{i}"} for i in range(len(params))]
+        results = self.run_batch(
+            circuits,
+            shots=shots,
+            observables=observables,
+            mode=mode,
+            per_circuit_options=options,
+        )
+
+        for i, p in enumerate(params):
+            results[i].metadata["scan_param"] = p
+            results[i].metadata["scan_index"] = i
+        return results
