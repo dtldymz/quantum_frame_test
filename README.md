@@ -1,6 +1,6 @@
-# quantum_sim 使用手册
+# nexq 使用手册
 
-`quantum_sim` 是一个可扩展的量子线路模拟器，支持：
+`nexq` 是一个可扩展的量子线路模拟器，支持：
 
 - 状态矢量与密度矩阵两种执行模式
 - NumPy / PyTorch 后端
@@ -9,7 +9,7 @@
 - 噪声模型（Kraus 通道）
 - JSON 与 OpenQASM 2.0/3.0 I/O
 
-当前版本中，`quantum_sim` 已具备独立电路与量子门实现。
+当前版本中，`nexq` 已具备独立电路与量子门实现。
 
 ## 1. 安装与环境
 
@@ -25,43 +25,43 @@ pip install numpy torch
 
 ## 2. 核心模块总览
 
-- `quantum_sim.circuit`
+- `nexq.circuit`
   - `Circuit` 电路类与门构造器（`hadamard`、`cnot`、`rx` 等）
-- `quantum_sim.measure`
+- `nexq.measure`
   - `Measure` 统一测量与执行入口
   - `Result` 统一结果对象
-- `quantum_sim.core.states`
+- `nexq.channel.states`
   - `StateVector`、`DensityMatrix`
-- `quantum_sim.core.operators`
+- `nexq.channel.operators`
   - `PauliOp`、`PauliString`、`Hamiltonian`
-- `quantum_sim.core.noise`
+- `nexq.channel.noise`
   - `NoiseModel` 与常见噪声通道
-- `quantum_sim.circuit.io`
+- `nexq.circuit.io`
   - JSON / OpenQASM 导入导出
 
 ## 2.1 导入对照
 
-优先使用顶层导入（`from quantum_sim import ...`）。
+优先使用顶层导入（`from nexq import ...`）。
 
-- 使用 `Circuit`、`hadamard`、`cnot`、`rx/ry/rz`、`cx/cy/cz`、`u2/u3`、`swap`、`toffoli`：`from quantum_sim import Circuit, hadamard, cnot, rx, ry, rz, cx, cy, cz, u2, u3, swap, toffoli`
-- 使用 `Measure`、`Result`：`from quantum_sim import Measure, Result`
-- 使用 `TorchBackend`、`NumpyBackend`：`from quantum_sim import TorchBackend, NumpyBackend`
-- 使用 `NoiseModel`、`BitFlipChannel`、`PhaseFlipChannel`、`DepolarizingChannel`、`AmplitudeDampingChannel`：`from quantum_sim import NoiseModel, BitFlipChannel, PhaseFlipChannel, DepolarizingChannel, AmplitudeDampingChannel`
-- 使用 `Hamiltonian`、`PauliOp`、`PauliString`：`from quantum_sim import Hamiltonian, PauliOp, PauliString`
-- 使用 JSON I/O：`from quantum_sim import circuit_to_json, circuit_from_json, save_circuit_json, load_circuit_json`
-- 使用 QASM I/O：`from quantum_sim import circuit_to_qasm, circuit_to_qasm3, circuit_from_qasm, save_circuit_qasm, save_circuit_qasm3, load_circuit_qasm`
+- 使用 `Circuit`、`hadamard`、`cnot`、`rx/ry/rz`、`cx/cy/cz`、`u2/u3`、`swap`、`toffoli`：`from nexq import Circuit, hadamard, cnot, rx, ry, rz, cx, cy, cz, u2, u3, swap, toffoli`
+- 使用 `Measure`、`Result`：`from nexq import Measure, Result`
+- 使用 `TorchBackend`、`NumpyBackend`：`from nexq import TorchBackend, NumpyBackend`
+- 使用 `NoiseModel`、`BitFlipChannel`、`PhaseFlipChannel`、`DepolarizingChannel`、`AmplitudeDampingChannel`：`from nexq import NoiseModel, BitFlipChannel, PhaseFlipChannel, DepolarizingChannel, AmplitudeDampingChannel`
+- 使用 `Hamiltonian`、`PauliOp`、`PauliString`：`from nexq import Hamiltonian, PauliOp, PauliString`
+- 使用 JSON I/O：`from nexq import circuit_to_json, circuit_from_json, save_circuit_json, load_circuit_json`
+- 使用 QASM I/O：`from nexq import circuit_to_qasm, circuit_to_qasm3, circuit_from_qasm, save_circuit_qasm, save_circuit_qasm3, load_circuit_qasm`
 
 补充说明：
 
-- `from quantum_sim import models` 会失败，因为顶层没有导出 `models` 这个名字。
-- 你可以直接用顶层导出的符号；若确实要导入子模块，请使用它的真实路径，例如 `from quantum_sim.circuit.model import Circuit`。
+- `from nexq import models` 会失败，因为顶层没有导出 `models` 这个名字。
+- 你可以直接用顶层导出的符号；若确实要导入子模块，请使用它的真实路径，例如 `from nexq.circuit.model import Circuit`。
 
 ## 3. 快速开始
 
 ### 3.1 Bell 态示例（状态矢量）
 
 ```python
-from quantum_sim import Circuit, Measure, TorchBackend, cnot, hadamard
+from nexq import Circuit, Measure, TorchBackend, cnot, hadamard
 
 backend = TorchBackend(device="cpu")
 measure = Measure(backend)
@@ -82,8 +82,8 @@ print(result.summary())
 ### 3.2 期望值与方差
 
 ```python
-from quantum_sim import Circuit, Measure, TorchBackend, cnot, hadamard
-from quantum_sim.core.operators import Hamiltonian
+from nexq import Circuit, Measure, TorchBackend, cnot, hadamard
+from nexq.channel.operators import Hamiltonian
 
 backend = TorchBackend(device="cpu")
 measure = Measure(backend)
@@ -130,7 +130,7 @@ print("Var(ZZ) =", result.expectation_variances["ZZ"])
 门构造器示例：
 
 ```python
-from quantum_sim import Circuit, crx, rx, toffoli
+from nexq import Circuit, crx, rx, toffoli
 
 circ = Circuit(
     rx(0.3, 0),
@@ -166,7 +166,7 @@ circ = Circuit(
 示例：
 
 ```python
-from quantum_sim import (
+from nexq import (
     BitFlipChannel,
     Circuit,
     Measure,
@@ -188,7 +188,7 @@ print(result.probabilities)  # 期望接近 [0, 1]
 
 ```python
 import numpy as np
-from quantum_sim import Circuit, Measure, TorchBackend, ry
+from nexq import Circuit, Measure, TorchBackend, ry
 
 backend = TorchBackend(device="cpu")
 measure = Measure(backend)
@@ -226,7 +226,7 @@ for r in results:
 
 ## 7. 算符与哈密顿量
 
-`quantum_sim.core.operators` 提供 Pauli 算符组合能力：
+`nexq.channel.operators` 提供 Pauli 算符组合能力：
 
 - `PauliOp('Z', qubit=0)`
 - `PauliString({'Z': [0], 'X': [1]}, n_qubits=2, coefficient=0.5)`
@@ -235,8 +235,8 @@ for r in results:
 示例：
 
 ```python
-from quantum_sim import TorchBackend
-from quantum_sim.core.operators import Hamiltonian
+from nexq import TorchBackend
+from nexq.channel.operators import Hamiltonian
 
 backend = TorchBackend(device="cpu")
 H = (Hamiltonian(n_qubits=2)
@@ -251,8 +251,8 @@ H_mat = H.to_matrix(backend)
 ### 8.1 JSON
 
 ```python
-from quantum_sim import Circuit, hadamard, cnot
-from quantum_sim.circuit.io.json_io import circuit_to_json, circuit_from_json
+from nexq import Circuit, hadamard, cnot
+from nexq.circuit.io.json_io import circuit_to_json, circuit_from_json
 
 circ = Circuit(hadamard(0), cnot(1, [0]), n_qubits=2)
 text = circuit_to_json(circ)
@@ -262,7 +262,7 @@ new_circ = circuit_from_json(text)
 ### 8.2 OpenQASM 2.0 / 3.0
 
 ```python
-from quantum_sim.circuit.io.qasm import circuit_to_qasm, circuit_from_qasm
+from nexq.circuit.io.qasm import circuit_to_qasm, circuit_from_qasm
 
 qasm2 = circuit_to_qasm(new_circ, version="2.0")
 qasm3 = circuit_to_qasm(new_circ, version="3.0")
@@ -293,8 +293,8 @@ python -m unittest discover -s tests -p 'test_*.py'
 
 如果你之前在项目里使用根目录 `Core.py` / `Circuit.py`：
 
-- 新代码建议统一改为 `quantum_sim` 顶层导入
-- `quantum_sim` 内部已完成独立门逻辑与电路实现
+- 新代码建议统一改为 `nexq` 顶层导入
+- `nexq` 内部已完成独立门逻辑与电路实现
 - 推荐入口：`Circuit + Measure`
 
 示例迁移：
@@ -304,7 +304,7 @@ python -m unittest discover -s tests -p 'test_*.py'
 # from Circuit import Circuit, hadamard, cnot
 
 # new
-from quantum_sim import Circuit, hadamard, cnot
+from nexq import Circuit, hadamard, cnot
 ```
 
 ---

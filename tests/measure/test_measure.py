@@ -3,8 +3,8 @@ import unittest
 import numpy as np
 import torch
 
-from quantum_sim import Circuit, Measure, TorchBackend, cnot, hadamard, ry
-from quantum_sim.core.operators import Hamiltonian
+from nexq import Circuit, Measure, TorchBackend, cnot, hadamard, ry
+from nexq.channel.operators import Hamiltonian
 
 
 class TestMeasure(unittest.TestCase):

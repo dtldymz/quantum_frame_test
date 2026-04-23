@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from quantum_sim import (
+from nexq import (
     AmplitudeDampingChannel,
     BitFlipChannel,
     Circuit,

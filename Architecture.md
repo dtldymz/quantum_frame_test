@@ -1,7 +1,7 @@
 # 量子模拟器构架
 
 ```text
-quantum_sim/
+nexq/
 ├── core/
 │   ├── backends/             # 计算后端解耦
 │   │   ├── base.py           # 后端抽象基类
