@@ -9,7 +9,7 @@
 - 噪声模型（Kraus 通道）
 - JSON 与 OpenQASM 2.0/3.0 I/O
 
-当前版本中，`quantum_sim` 已具备独立电路与量子门实现，不依赖根目录的 `Core.py` 与 `Circuit.py`。
+当前版本中，`quantum_sim` 已具备独立电路与量子门实现。
 
 ## 1. 安装与环境
 
@@ -38,6 +38,25 @@ pip install numpy torch
   - `NoiseModel` 与常见噪声通道
 - `quantum_sim.circuit.io`
   - JSON / OpenQASM 导入导出
+
+## 2.1 导入对照:
+
+优先使用顶层导入（`from quantum_sim import ...`）。
+
+| 使用内容                                                                                                       | 推荐导入                                                                                                                                   |
+| -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Circuit`、`hadamard`、`cnot`、`rx/ry/rz`、`cx/cy/cz、u2/u3`、`swap`、`toffoli`                  | `from quantum_sim import Circuit, hadamard, cnot, rx, ry, rz, cx, cy, cz, u2, u3, swap, toffoli`                                         |
+| `ExecutionEngine`、`ExecutionResult`                                                                       | `from quantum_sim import ExecutionEngine, ExecutionResult`                                                                               |
+| `TorchBackend`、`NumpyBackend`                                                                             | `from quantum_sim import TorchBackend, NumpyBackend`                                                                                     |
+| `NoiseModel`、`BitFlipChannel`、`PhaseFlipChannel`、`DepolarizingChannel`、`AmplitudeDampingChannel` | `from quantum_sim import NoiseModel, BitFlipChannel, PhaseFlipChannel, DepolarizingChannel, AmplitudeDampingChannel`                     |
+| `Hamiltonian`、`PauliOp`、`PauliString`                                                                  | `from quantum_sim import Hamiltonian, PauliOp, PauliString`                                                                              |
+| `circuit_to_json`、`circuit_from_json` 等 JSON I/O                                                         | `from quantum_sim import circuit_to_json, circuit_from_json, save_circuit_json, load_circuit_json`                                       |
+| `circuit_to_qasm`、`circuit_from_qasm` 等 QASM I/O                                                         | `from quantum_sim import circuit_to_qasm, circuit_to_qasm3, circuit_from_qasm, save_circuit_qasm, save_circuit_qasm3, load_circuit_qasm` |
+
+补充说明：
+
+- `from quantum_sim import models` 会失败，因为顶层没有导出 `models` 这个名字。
+- 你可以直接用顶层导出的符号；若确实要导入子模块，请使用它的真实路径，例如 `from quantum_sim.circuit.model import Circuit`。
 
 ## 3. 快速开始
 
