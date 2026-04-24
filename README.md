@@ -300,9 +300,54 @@ rho_noisy = model.apply(rho.data, n_qubits=2, backend=backend)
 
 nexq 通过 `NPUBackend` 支持 Ascend NPU（依赖 `torch_npu`）。
 
-说明：针对 NPU 上 `complex64` 的算子兼容性，库内已经在后端层实现了 workaround（例如 `matmul/kron/trace/inner_product/partial_trace/expectation/abs_sq/measure_probs` 的复数拆分路径）。
+说明：Ascend NPU 在不同版本的 `torch_npu` 组合下，对 `complex64` 的内核支持并不完整。某些复数算子会直接报错，例如：
 
-### 5.1 方式 A（在测量阶段指定后端）
+- `aclnnEye ... DT_COMPLEX64 not implemented`
+- `aclnnAdd ... DT_COMPLEX64 not implemented`
+
+因此，nexq 在后端层提供了 NPU 专用兼容路径（workaround），核心思路是：
+
+- 优先走后端抽象接口（`matmul/kron/trace/...`），避免业务层直接做 torch 复数运算。
+- 在 NPU 且输入为复数时，将计算拆成实部/虚部后重组，绕过缺失内核。
+- 对常见初始化路径（如 `eye`、`|0...0>`）提供 NPU 安全实现。
+
+当前已覆盖的高频兼容算子包括：
+
+- `matmul`, `apply_unitary`
+- `kron`
+- `dagger`, `trace`
+- `inner_product`, `partial_trace`
+- `expectation_sv`, `expectation_dm`
+- `abs_sq`, `measure_probs`
+- `eye`, `zeros_state`
+
+注意：这不代表 NPU 对所有复数算子都原生可用。若新增路径中出现“直接 torch 复数加减乘”，仍可能触发新报错。
+
+### 5.1 NPU complex64 问题详解（建议先读）
+
+#### 5.1.1 根因
+
+- 问题不在量子算法本身，而在底层内核支持矩阵。
+- 同样的 Python 代码在 CPU/CUDA 可运行，不代表在 NPU 复数路径可运行。
+
+#### 5.1.2 典型触发点
+
+- 前端构造电路矩阵时，直接对复数张量做 `+`、`*`、某些初始化操作。
+- 绕过 `Backend` 接口，直接调用 torch 复数运算。
+
+#### 5.1.3 处理原则
+
+- 不需要把整个项目都改成“处处手工拆实虚部”。
+- 只需要确保“在 NPU 上实际执行的复数运算”都经过后端封装或 NPU 专用回退。
+- 若出现新报错，按栈定位到具体算子点，再做最小修复。
+
+#### 5.1.4 快速排查清单
+
+- 检查报错是否包含 `DT_COMPLEX64 not implemented`。
+- 检查报错栈是否位于后端层之外（例如业务文件里直接做了 torch 复数加法）。
+- 优先改为调用 `backend` 方法，必要时在 `NPUBackend` 增加拆分回退。
+
+### 5.2 方式 A（在测量阶段指定后端）
 
 该方式保持电路对象与后端解耦，在 `Measure` 中指定后端。
 
@@ -325,7 +370,7 @@ print(result.backend_name)
 - 你希望电路对象可复用在多种后端上（CPU/GPU/NPU）
 - 希望保持 API 简洁，执行时再选择设备
 
-### 5.2 方式 B（前端构建电路时绑定后端）
+### 5.3 方式 B（前端构建电路时绑定后端）
 
 该方式在 `Circuit` 构建阶段指定 backend，前端矩阵组装与后端执行保持同一 XPU。
 
@@ -357,7 +402,7 @@ cir.bind_backend(backend)
 - 你希望前端矩阵组装与执行严格在同一设备上
 - 希望减少 CPU 和 XPU 之间的数据迁移
 
-### 5.3 严格 NPU 模式（不允许回退）
+### 5.4 严格 NPU 模式（不允许回退）
 
 ```python
 from nexq import NPUBackend
@@ -366,7 +411,7 @@ from nexq import NPUBackend
 backend = NPUBackend(device="npu:0", fallback_to_cpu=False)
 ```
 
-### 5.4 运行示例
+### 5.5 运行示例
 
 仓库示例脚本：`demo_npu.py`
 
@@ -375,7 +420,7 @@ python demo_npu.py
 python demo_npu.py --shots 2048 --allow-cpu-fallback
 ```
 
-### 5.3 分布式环境（多卡/多节点）
+### 5.6 分布式环境（多卡/多节点）
 
 使用环境变量 `WORLD_SIZE`、`RANK`、`LOCAL_RANK` 自动绑定对应卡：
 
@@ -392,19 +437,16 @@ print(backend.runtime_context)
 
 ```bash
 # 单卡验证
-python demo.py
-
-# 严格验证（NPU 不可用时报错）
-python demo.py
+python demo_npu.py
 
 # 允许 CPU 回退（本地调试用）
-python demo.py --allow-cpu-fallback
+python demo_npu.py --allow-cpu-fallback
 
 # 多卡分布式启动
 torchrun --nproc_per_node=4 your_script.py
 ```
 
-### 5.4 完整端到端示例
+### 5.7 完整端到端示例
 
 ```python
 import math
@@ -431,15 +473,16 @@ print(f"counts  : {result.counts}")
 print(f"summary : {result.summary()}")
 ```
 
-### 5.5 runtime_context 字段说明
+### 5.8 runtime_context 字段说明
 
 | 字段            | 说明                                      |
 | --------------- | ----------------------------------------- |
 | `world_size`  | 总进程数                                  |
 | `rank`        | 全局进程编号                              |
 | `local_rank`  | 本节点本地编号（对应 `npu:local_rank`） |
+| `distributed` | `world_size > 1` 时为 True              |
 
-### 5.6 远程 NPU 验证输出示例（新路径）
+### 5.9 远程 NPU 验证输出示例（新路径）
 
 使用新路径 smoke 脚本进行全链路验证（单门、受控门、参数门、density matrix）：
 
@@ -460,7 +503,6 @@ runtime_context: NPURuntimeContext(world_size=1, rank=0, local_rank=0, distribut
 
 Summary: PASS
 ```
-| `distributed` | `world_size > 1` 时为 True              |
 
 ---
 

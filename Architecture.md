@@ -10,7 +10,7 @@ nexq/
 │   │   ├── qubo/
 │   │   └── sb/
 │   ├── qas/
-│   │   └── expressibility.py
+│   │   └── expressibility.py		# 量子线路在Haar测度下的KL度量、MMD度量
 │   ├── qml/
 │   ├── universal/
 │   ├── variational/
@@ -44,9 +44,9 @@ nexq/
 │   ├── model.py                        # Circuit(..., backend=None), unitary(backend=...)
 │   └── io/
 │       ├── __init__.py
-│       ├── dag.py
+│       ├── dag.py			# 量子线路的有向图表示
 │       ├── json_io.py
-│       └── qasm.py
+│       └── qasm.py			# 量子线路与openqasm2.0/3.0互相转换
 │
 ├── encoder/
 │   ├── __init__.py
