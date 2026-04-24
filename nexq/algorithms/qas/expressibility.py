@@ -240,7 +240,12 @@ def KL_Haar_relative(
     return float(kl_haar_relative)
 
 
-def MMD_relative(cir: Circuit, samples: int = 1000, sigma: float = 0.01) -> float:
+def MMD_relative(
+    cir: Circuit,
+    samples: int = 1000,
+    sigma: float = 0.01,
+    backend: Optional[Backend] = None,
+) -> float:
     """
     基于 MMD 的量子线路表达能力估计。
 
@@ -248,6 +253,7 @@ def MMD_relative(cir: Circuit, samples: int = 1000, sigma: float = 0.01) -> floa
         cir: 参数化量子线路
         samples: 采样次数 M（默认 1000）
         sigma: 高斯核带宽（默认 0.01），必须为正数
+        backend: 计算后端；若为 None，使用默认 NumpyBackend
 
     返回:
         Exp_2 = 1 - MMD，理论上越接近 1 表示越 expressive。
@@ -257,9 +263,11 @@ def MMD_relative(cir: Circuit, samples: int = 1000, sigma: float = 0.01) -> floa
     if sigma <= 0:
         raise ValueError("sigma 必须为正数")
 
-    from ...channel.backends.numpy_backend import NumpyBackend
+    if backend is None:
+        from ...channel.backends.numpy_backend import NumpyBackend
 
-    backend = NumpyBackend()
+        backend = NumpyBackend()
+
     n_qubits = cir.n_qubits
     dim = 1 << n_qubits
 
