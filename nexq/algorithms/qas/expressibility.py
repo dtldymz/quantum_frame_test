@@ -94,6 +94,21 @@ def _compute_fidelity(sv1: StateVector, sv2: StateVector, backend: Backend) -> f
     return fidelity
 
 
+def _count_total_parameters(circuit: Circuit, param_indices: List[int]) -> int:
+    """统计电路中所有参数化门的总参数数量。"""
+    total_params = 0
+    for idx in param_indices:
+        gate = circuit.gates[idx]
+        gate_type = gate["type"]
+        if gate_type in ("rx", "ry", "rz", "crx", "cry", "crz", "rzz"):
+            total_params += 1
+        elif gate_type == "u2":
+            total_params += 2
+        elif gate_type == "u3":
+            total_params += 3
+    return total_params
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # 主函数
 # ─────────────────────────────────────────────────────────────────────────
@@ -139,16 +154,7 @@ def KL_Haar_relative(
         raise ValueError("电路中没有参数化门，无法计算 expressibility")
 
     # 计算总参数数
-    total_params = 0
-    for idx in param_indices:
-        gate = cir.gates[idx]
-        gate_type = gate["type"]
-        if gate_type in ("rx", "ry", "rz", "crx", "cry", "crz", "rzz"):
-            total_params += 1
-        elif gate_type == "u2":
-            total_params += 2
-        elif gate_type == "u3":
-            total_params += 3
+    total_params = _count_total_parameters(cir, param_indices)
 
     # ──────────── 第 2 步：初始态 ────────────────────────────
     zero_state = StateVector.zero_state(n_qubits, backend)
@@ -232,3 +238,69 @@ def KL_Haar_relative(
     kl_haar_relative = -np.log(ratio)
 
     return float(kl_haar_relative)
+
+
+def MMD_relative(cir: Circuit, samples: int = 1000, sigma: float = 0.01) -> float:
+    """
+    基于 MMD 的量子线路表达能力估计。
+
+    输入参数:
+        cir: 参数化量子线路
+        samples: 采样次数 M（默认 1000）
+        sigma: 高斯核带宽（默认 0.01），必须为正数
+
+    返回:
+        Exp_2 = 1 - MMD，理论上越接近 1 表示越 expressive。
+    """
+    if samples <= 0:
+        raise ValueError("samples 必须为正整数")
+    if sigma <= 0:
+        raise ValueError("sigma 必须为正数")
+
+    from ...channel.backends.numpy_backend import NumpyBackend
+
+    backend = NumpyBackend()
+    n_qubits = cir.n_qubits
+    dim = 1 << n_qubits
+
+    param_indices = _get_parametrized_gate_indices(cir)
+    if not param_indices:
+        raise ValueError("电路中没有参数化门，无法计算 MMD_relative")
+    total_params = _count_total_parameters(cir, param_indices)
+
+    # |+>^N = (1/sqrt(2^N)) * sum_i |i>
+    plus_state_data = np.ones(dim, dtype=np.complex64) / np.sqrt(dim)
+    plus_state = StateVector.from_array(plus_state_data, n_qubits=n_qubits, backend=backend)
+
+    # X: 从参数化电路诱导分布采样得到的概率向量
+    x_samples = np.zeros((samples, dim), dtype=np.float64)
+    np.random.seed(None)
+
+    for i in range(samples):
+        params = np.random.uniform(0, 2 * np.pi, total_params)
+        cir_i = _replace_circuit_parameters(cir, params)
+        U = backend.cast(backend.to_numpy(cir_i.unitary()))
+        out_state = plus_state.evolve(U)
+        probs = backend.to_numpy(out_state.probabilities()).reshape(-1)
+        x_samples[i] = np.real(probs)
+
+    # Y: 从 simplex 上均匀分布采样（Dirichlet(alpha=1)）
+    expo = np.random.exponential(scale=1.0, size=(samples, dim))
+    y_samples = expo / np.sum(expo, axis=1, keepdims=True)
+
+    # 高斯核 k(x, y) = exp(-||x-y||^2 / (4*sigma^2))
+    denom = 4.0 * (sigma ** 2)
+
+    xx_dist2 = np.sum((x_samples[:, None, :] - x_samples[None, :, :]) ** 2, axis=2)
+    yy_dist2 = np.sum((y_samples[:, None, :] - y_samples[None, :, :]) ** 2, axis=2)
+    xy_dist2 = np.sum((x_samples[:, None, :] - y_samples[None, :, :]) ** 2, axis=2)
+
+    term_xx = np.sum(np.exp(-xx_dist2 / denom))
+    term_yy = np.sum(np.exp(-yy_dist2 / denom))
+    term_xy = np.sum(np.exp(-xy_dist2 / denom))
+
+    mmd = np.abs(term_xx + term_yy - 2.0 * term_xy) / (samples ** 2)
+    exp_2 = 1.0 - mmd
+
+    return float(exp_2)
+
