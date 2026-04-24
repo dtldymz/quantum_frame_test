@@ -1,7 +1,7 @@
 """
 nexq/circuit/gates.py
 
-在 nexq 内部实现量子门矩阵构造逻辑，不依赖 Core.py。
+实现量子门矩阵构造逻辑。
 """
 
 from __future__ import annotations
