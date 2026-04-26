@@ -12,10 +12,10 @@ nexq/channel/operators.py
 
     bk = TorchBackend()
 
-    # H = -0.5 * Z₀Z₁  +  0.3 * X₀X₁
-    H = (Hamiltonian(n_qubits=2)
-         .add_term(-0.5, {'Z': [0, 1]})
-         .add_term( 0.3, {'X': [0, 1]}))
+        # H = -0.5 * Z₀Z₁  +  0.3 * X₀X₁
+        H = (Hamiltonian(n_qubits=2)
+            .term(-0.5, {'Z': [0, 1]})
+            .term( 0.3, {'X': [0, 1]}))
     mat = H.to_matrix(bk)
 """
 
@@ -104,27 +104,47 @@ class PauliString:
     示例::
 
         # 0.5 × Z₀ ⊗ X₁
-        ps = PauliString({'Z': [0], 'X': [1]}, n_qubits=2, coefficient=0.5)
+        ps = PauliString({'Z': [0], 'X': [1]}, coefficient=0.5, n_qubits=2)
     """
 
     def __init__(
         self,
-        terms: Dict[str, List[int]],
-        n_qubits: int,
+        paulistring: Dict[str, List[int]] | None = None,
         coefficient: complex = 1.0,
+        n_qubits: int | None = None,
+        *,
+        terms: Dict[str, List[int]] | None = None,
     ):
         """
         参数:
-            terms:       {pauli_label: [qubit_indices]}，例如 {'Z': [0, 1], 'X': [2]}
-            n_qubits:    总量子比特数
+            paulistring: {pauli_label: [qubit_indices]}，例如 {'Z': [0, 1], 'X': [2]}
             coefficient: 系数（复数，默认 1.0）
+            n_qubits:    总量子比特数。若为 None，则从 paulistring 中自动推导
         """
+        if paulistring is None:
+            paulistring = terms
+        elif terms is not None:
+            raise ValueError("请只传入 paulistring 或 terms 之一")
+
+        if paulistring is None:
+            raise ValueError("paulistring 不能为空")
+
+        if n_qubits is None:
+            max_qubit = -1
+            for qubits in paulistring.values():
+                for q in qubits:
+                    if q < 0:
+                        raise IndexError(f"量子比特索引 {q} 不能为负数")
+                    if q > max_qubit:
+                        max_qubit = q
+            n_qubits = max_qubit + 1 if max_qubit >= 0 else 0
+
         self.n_qubits = n_qubits
         self.coefficient = complex(coefficient)
 
         # 每个比特位的泡利标签，默认 'I'
         self._qubit_labels: List[str] = ["I"] * n_qubits
-        for label, qubits in terms.items():
+        for label, qubits in paulistring.items():
             label = label.upper()
             if label not in PAULI_MAP:
                 raise ValueError(f"未知泡利算符 '{label}'，只支持 I/X/Y/Z")
@@ -170,11 +190,11 @@ class Hamiltonian:
 
         bk = TorchBackend()
 
-        # H = -Z₀Z₁  +  0.5 X₀X₁  +  0.3 Z₀
-        H = (Hamiltonian(n_qubits=2)
-             .add_term(-1.0,  {'Z': [0, 1]})
-             .add_term( 0.5,  {'X': [0, 1]})
-             .add_term( 0.3,  {'Z': [0]}))
+           # H = -Z₀Z₁  +  0.5 X₀X₁  +  0.3 Z₀
+           H = (Hamiltonian(n_qubits=2)
+               .term(-1.0,  {'Z': [0, 1]})
+               .term( 0.5,  {'X': [0, 1]})
+               .term( 0.3,  {'Z': [0]}))
 
         mat = H.to_matrix(bk)
         print(H.expectation(sv, bk))   # sv 是 StateVector
@@ -184,21 +204,19 @@ class Hamiltonian:
         self.n_qubits = n_qubits
         self._terms: List[PauliString] = []
 
-    def add_term(
+    def term(
         self,
         coefficient: complex,
         pauli_dict: Dict[str, List[int]],
     ) -> "Hamiltonian":
         """
-        添加一项 coefficient × PauliString(pauli_dict)，支持链式调用。
+        新名称：添加一项 coefficient × PauliString(pauli_dict)，支持链式调用。
 
-        参数:
-            coefficient: 系数（实数或复数）
-            pauli_dict:  {pauli_label: [qubit_indices]}，例如 {'Z': [0, 1]}
+        参数同 `add_term`。
         返回:
             self
         """
-        term = PauliString(pauli_dict, self.n_qubits, coefficient)
+        term = PauliString(pauli_dict, coefficient, self.n_qubits)
         self._terms.append(term)
         return self
 

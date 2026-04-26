@@ -235,10 +235,14 @@ from nexq import PauliString, TorchBackend
 
 backend = TorchBackend()
 
-# 0.5 × Z₀ ⊗ X₁（2 比特空间）
-ps = PauliString({'Z': [0], 'X': [1]}, n_qubits=2, coefficient=0.5)
+# 0.5 × Z₀ ⊗ X₁（2 比特空间），注意参数顺序：coefficient 在 n_qubits 之前
+ps = PauliString({'Z': [0], 'X': [1]}, coefficient=0.5, n_qubits=2)
 mat = ps.to_matrix(backend)
 print(ps)   # PauliString(0.5 × ZX)
+
+# 或者省略 n_qubits，库会自动从 paulistring 中推断（最大索引 + 1）
+ps_auto = PauliString({'Z': [0], 'X': [1]}, coefficient=0.5)
+print(ps_auto)
 ```
 
 ### 4.3 哈密顿量 Hamiltonian
@@ -250,9 +254,9 @@ backend = TorchBackend()
 
 # H = -1.0 × Z₀Z₁  +  0.5 × X₀X₁  +  0.3 × Z₀
 H = (Hamiltonian(n_qubits=2)
-     .add_term(-1.0, {'Z': [0, 1]})
-     .add_term( 0.5, {'X': [0, 1]})
-     .add_term( 0.3, {'Z': [0]}))
+    .term(-1.0, {'Z': [0, 1]})
+    .term( 0.5, {'X': [0, 1]})
+    .term( 0.3, {'Z': [0]}))
 
 # 转为后端矩阵
 H_mat = H.to_matrix(backend)
@@ -388,6 +392,17 @@ cir = Circuit(
 # Measure 会优先使用 circuit.backend（若存在）
 result = Measure(backend).run(cir, shots=1024)
 print(result.backend_name)
+
+更多说明（矩阵组装时机与 backend 使用）:
+
+- 构建阶段只保存门描述: 调用 `hadamard(0)` 等构造的是门的描述字典（例如 `{"type": "hadamard", "target_qubit": 0}`），`Circuit.__init__` 只是把这些描述存起来，并不会在构建时把门转换成数值矩阵。
+- 当前执行策略: `Measure.run`/`run_density_matrix` 在电路对象具备 `gates` 序列时，会优先走“逐门演化”路径（按门依次作用到态/密度矩阵），而不是先组装整条电路的全局矩阵后再一次性作用。
+- 矩阵在组装时生成: 真正把门变为 2^n×2^n 的数值矩阵发生在调用 `Circuit.unitary(backend=...)` 或 `Measure` 等需要数值矩阵的地方。此时会调用 `gate_to_matrix(gate, cir_qubits, backend)` 来生成每个门的矩阵。
+- backend 参数的作用: 当 `backend is None` 时，`gate_to_matrix` 会走 numpy 路径（例如调用 `_hadamard()` 等函数，在 CPU 上生成矩阵）；当传入 `backend` 时，`gate_to_matrix` 会使用后端分支（先构造 2×2 的 base 矩阵再通过 `_single_qubit_from_base_backend`/`_controlled_from_base_backend` 调用 `backend.cast`、`backend.kron`、`backend.matmul` 等接口），从而在目标后端（CPU/GPU/NPU）上构造和组合张量。
+- 兼容回退路径: 若电路对象不提供 `gates` 序列，`Measure` 仍会回退到 `unitary()` 路径以兼容外部实现。
+- 可能的设备搬运: 在 `unitary()` 回退路径中，`Measure` 现在优先直接 `backend.cast(unitary_raw)`，避免无必要的 `to_numpy` 主机往返。
+- 性能建议: 对大 qubit 数，显式组装全矩阵会占用大量内存并产生迁移成本。若要最小化搬运，优先在构建时绑定后端（本节方式 B），或改为按门逐步在态上直接作用（逐门 apply），避免生成完整 2^n×2^n 矩阵；若需要彻底避免中间拷贝，可考虑修改 `Measure` 中的 `to_numpy` 使用点或直接在后端上逐门演化。
+
 ```
 
 也可先构建再绑定：

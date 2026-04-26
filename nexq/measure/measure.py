@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
 import numpy as np
 
-from ..circuit.model import Circuit
+from ..circuit.gates import gate_to_matrix
 from ..channel.states import DensityMatrix, StateVector
 from .result import Result
 from .sampler import Sampler
@@ -34,6 +34,11 @@ class Measure:
     def _resolve_backend(self, circuit):
         circuit_backend = getattr(circuit, "backend", None)
         return circuit_backend if circuit_backend is not None else self.backend
+
+    @staticmethod
+    def _has_gate_sequence(circuit) -> bool:
+        gates = getattr(circuit, "gates", None)
+        return isinstance(gates, Sequence)
 
     def _build_initial_state(self, n_qubits: int, backend, initial_state=None) -> StateVector:
         if initial_state is None:
@@ -72,7 +77,37 @@ class Measure:
             unitary_raw = circuit.unitary(backend=backend)
         except TypeError:
             unitary_raw = circuit.unitary()
-        return backend.cast(backend.to_numpy(unitary_raw))
+        # Fast path: when unitary_raw is already a backend-native tensor on the
+        # target device/dtype, backend.cast can return without host round-trip.
+        return backend.cast(unitary_raw)
+
+    def _evolve_state_vector_gatewise(self, circuit, sv0: StateVector, backend) -> StateVector:
+        sv = sv0
+        for gate in circuit.gates:
+            gm = gate_to_matrix(gate, cir_qubits=sv.n_qubits, backend=backend)
+            sv = sv.evolve(gm)
+        return sv
+
+    def _evolve_density_matrix_gatewise(
+        self,
+        circuit,
+        rho0: DensityMatrix,
+        backend,
+        noise_model=None,
+    ) -> DensityMatrix:
+        rho = rho0
+        for gate in circuit.gates:
+            gate_unitary = gate_to_matrix(gate, cir_qubits=rho.n_qubits, backend=backend)
+            rho = rho.evolve(gate_unitary)
+            if noise_model is not None:
+                rho_noisy = noise_model.apply(
+                    rho.data,
+                    n_qubits=rho.n_qubits,
+                    backend=backend,
+                    gate_type=gate.get("type"),
+                )
+                rho = DensityMatrix(rho_noisy, rho.n_qubits, backend)
+        return rho
 
     def run(
         self,
@@ -92,8 +127,10 @@ class Measure:
             observables: 可观测量字典 {name: operator_matrix}
             return_state: 是否在结果中附带最终态向量
         """
-        if not hasattr(circuit, "n_qubits") or not hasattr(circuit, "unitary"):
-            raise TypeError("circuit 需要具备 n_qubits 属性和 unitary() 方法")
+        if not hasattr(circuit, "n_qubits"):
+            raise TypeError("circuit 需要具备 n_qubits 属性")
+        if not self._has_gate_sequence(circuit) and not hasattr(circuit, "unitary"):
+            raise TypeError("circuit 需要具备 gates 序列或 unitary() 方法")
 
         n_qubits = int(circuit.n_qubits)
         if n_qubits <= 0:
@@ -104,9 +141,12 @@ class Measure:
 
         sv0 = self._build_initial_state(n_qubits, backend, initial_state=initial_state)
 
-        unitary = self._circuit_unitary_on_backend(circuit, backend)
-
-        sv = sv0.evolve(unitary)
+        if self._has_gate_sequence(circuit):
+            # Preferred execution path: apply each gate directly on the state.
+            sv = self._evolve_state_vector_gatewise(circuit, sv0, backend)
+        else:
+            unitary = self._circuit_unitary_on_backend(circuit, backend)
+            sv = sv0.evolve(unitary)
         probs_backend = sv.probabilities()
         probs = backend.to_numpy(probs_backend).real
 
@@ -167,8 +207,10 @@ class Measure:
             noise_model: NoiseModel，可选。若提供且电路具有 gates，则在每个门后施加噪声。
             return_state: 是否在结果中附带最终密度矩阵（flatten 一维）
         """
-        if not hasattr(circuit, "n_qubits") or not hasattr(circuit, "unitary"):
-            raise TypeError("circuit 需要具备 n_qubits 属性和 unitary() 方法")
+        if not hasattr(circuit, "n_qubits"):
+            raise TypeError("circuit 需要具备 n_qubits 属性")
+        if not self._has_gate_sequence(circuit) and not hasattr(circuit, "unitary"):
+            raise TypeError("circuit 需要具备 gates 序列或 unitary() 方法")
 
         n_qubits = int(circuit.n_qubits)
         if n_qubits <= 0:
@@ -183,22 +225,15 @@ class Measure:
             initial_density_matrix=initial_density_matrix,
         )
 
-        rho = rho0
-        if noise_model is not None and hasattr(circuit, "gates"):
-            for gate in circuit.gates:
-                gate_unitary = self._circuit_unitary_on_backend(
-                    Circuit(gate, n_qubits=n_qubits, backend=backend),
-                    backend,
-                )
-                rho = rho.evolve(gate_unitary)
-                rho_noisy = noise_model.apply(
-                    rho.data,
-                    n_qubits=n_qubits,
-                    backend=backend,
-                    gate_type=gate.get("type"),
-                )
-                rho = DensityMatrix(rho_noisy, n_qubits, backend)
+        if self._has_gate_sequence(circuit):
+            rho = self._evolve_density_matrix_gatewise(
+                circuit,
+                rho0,
+                backend,
+                noise_model=noise_model,
+            )
         else:
+            rho = rho0
             unitary = self._circuit_unitary_on_backend(circuit, backend)
             rho = rho.evolve(unitary)
 

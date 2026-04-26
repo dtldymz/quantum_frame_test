@@ -24,7 +24,7 @@ class TestMeasure(unittest.TestCase):
         self.assertAlmostEqual(float(np.sum(result.probabilities)), 1.0, places=6)
 
     def test_run_state_vector_expectation_and_variance(self):
-        h = Hamiltonian(n_qubits=2).add_term(1.0, {"Z": [0, 1]})
+        h = Hamiltonian(n_qubits=2).term(1.0, {"Z": [0, 1]})
         op = h.to_matrix(self.backend)
 
         result = self.measure.run(self.bell, shots=None, observables={"ZZ": op})
@@ -36,7 +36,7 @@ class TestMeasure(unittest.TestCase):
         self.assertAlmostEqual(result.stddev("ZZ"), 0.0, places=5)
 
     def test_run_density_matrix_path(self):
-        h = Hamiltonian(n_qubits=2).add_term(1.0, {"Z": [0, 1]})
+        h = Hamiltonian(n_qubits=2).term(1.0, {"Z": [0, 1]})
         op = h.to_matrix(self.backend)
 
         result = self.measure.run_density_matrix(self.bell, shots=1500, observables={"ZZ": op})
@@ -52,7 +52,7 @@ class TestMeasure(unittest.TestCase):
         c1 = Circuit(hadamard(0), n_qubits=2)
         c2 = self.bell
 
-        h = Hamiltonian(n_qubits=2).add_term(1.0, {"Z": [0, 1]})
+        h = Hamiltonian(n_qubits=2).term(1.0, {"Z": [0, 1]})
         op = h.to_matrix(self.backend)
 
         results = self.measure.run_batch(
@@ -74,7 +74,7 @@ class TestMeasure(unittest.TestCase):
         self.assertAlmostEqual(results[1].expectation_values["ZZ"], 1.0, places=5)
 
     def test_scan_parameters(self):
-        h = Hamiltonian(n_qubits=2).add_term(1.0, {"Z": [0]})
+        h = Hamiltonian(n_qubits=2).term(1.0, {"Z": [0]})
         op = h.to_matrix(self.backend)
 
         params = [0.0, np.pi / 2, np.pi]
@@ -103,6 +103,19 @@ class TestMeasure(unittest.TestCase):
         result = self.measure.run(circ, shots=200)
 
         self.assertTrue(result.backend_name.startswith("NumpyBackend("))
+        self.assertAlmostEqual(result.probabilities[0], 0.5, places=3)
+        self.assertAlmostEqual(result.probabilities[3], 0.5, places=3)
+
+    def test_run_gatewise_path_does_not_require_unitary(self):
+        class GateOnlyCircuit:
+            def __init__(self):
+                self.n_qubits = 2
+                self.gates = [hadamard(0), cnot(1, [0])]
+
+            def unitary(self, backend=None):
+                raise AssertionError("gatewise path should not call unitary()")
+
+        result = self.measure.run(GateOnlyCircuit(), shots=None)
         self.assertAlmostEqual(result.probabilities[0], 0.5, places=3)
         self.assertAlmostEqual(result.probabilities[3], 0.5, places=3)
 
