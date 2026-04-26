@@ -210,9 +210,8 @@ class Hamiltonian:
         pauli_dict: Dict[str, List[int]],
     ) -> "Hamiltonian":
         """
-        新名称：添加一项 coefficient × PauliString(pauli_dict)，支持链式调用。
+        添加一项 coefficient × PauliString(pauli_dict)，支持链式调用。
 
-        参数同 `add_term`。
         返回:
             self
         """
