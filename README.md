@@ -51,7 +51,7 @@ from nexq import (
     circuit_to_qasm, circuit_to_qasm3,
     circuit_from_qasm,
     load_circuit_qasm, save_circuit_qasm,
-    load_circuit_qasm, save_circuit_qasm3,
+    save_circuit_qasm3,
 )
 ```
 
@@ -146,7 +146,7 @@ measure = Measure(backend)
 
 cir = Circuit(hadamard(0), cnot(1, [0]), n_qubits=2)
 
-# shots=None 时只返回概率，不采样
+# shots>0 时返回概率并采样
 result = measure.run(cir, shots=1024)
 
 print(result.probabilities)     # array([0.5, 0. , 0. , 0.5])
@@ -201,16 +201,16 @@ print(counts)   # {'|00>': 512}
 
 ### 3.5 Result 对象字段速查
 
-| 字段                      | 类型                       | 说明                          |
-| ------------------------- | -------------------------- | ----------------------------- |
-| `probabilities`         | `np.ndarray`             | 各基态概率，shape `(2^n,)`  |
-| `counts`                | `dict` or `None`       | `{'\|00>': N, ...}` 采样计数 |
-| `shots`                 | `int` or `None`        | 采样次数                      |
-| `expectation_values`    | `dict`                   | `{name: float}` 期望值      |
-| `expectation_variances` | `dict`                   | `{name: float}` 方差        |
-| `final_state`           | `np.ndarray` or `None` | 末态向量                      |
-| `most_probable()`       | `(str, float)`           | 最高概率基态及其概率          |
-| `summary()`             | `str`                    | 单行摘要字符串                |
+| 字段                      | 类型                       | 说明                                                    |
+| ------------------------- | -------------------------- | ------------------------------------------------------- |
+| `probabilities`         | `np.ndarray`             | 各基态概率，shape `(2^n,)`                            |
+| `counts`                | `dict` or `None`       | `{'\|00>': N, ...}` 采样计数                           |
+| `shots`                 | `int` or `None`        | 采样次数                                                |
+| `expectation_values`    | `dict`                   | `{name: float}` 期望值                                |
+| `expectation_variances` | `dict`                   | `{name: float}` 方差                                  |
+| `final_state`           | `np.ndarray` or `None` | 末态数据（SV 路径为向量；DM 路径为 flatten 后密度矩阵） |
+| `most_probable()`       | `(str, float)`           | 最高概率基态及其概率                                    |
+| `summary()`             | `str`                    | 单行摘要字符串                                          |
 
 ---
 
@@ -241,7 +241,7 @@ backend = TorchBackend()
 # 0.5 × Z₀ ⊗ X₁（2 比特空间），注意参数顺序：coefficient 在 n_qubits 之前
 ps = PauliString({'Z': [0], 'X': [1]}, coefficient=0.5, n_qubits=2)
 mat = ps.to_matrix(backend)
-print(ps)   # PauliString(0.5 × ZX)
+print(ps)   # PauliString(0.5+0j × Z⊗X)
 
 # 或者省略 n_qubits，库会自动从 paulistring 中推断（最大索引 + 1）
 ps_auto = PauliString({'Z': [0], 'X': [1]}, coefficient=0.5)
@@ -354,32 +354,11 @@ nexq 通过 `NPUBackend` 支持 Ascend NPU（依赖 `torch_npu`）。
 - 检查报错栈是否位于后端层之外（例如业务文件里直接做了 torch 复数加法）。
 - 优先改为调用 `backend` 方法，必要时在 `NPUBackend` 增加拆分回退。
 
-### 5.2 方式 A（在测量阶段指定后端）
+### 5.2 推荐方式：在 `Circuit` 绑定后端（也可在 `Measure` 指定）
 
-该方式保持电路对象与后端解耦，在 `Measure` 中指定后端。
+推荐在构建电路时把目标后端绑定到 `Circuit`（即在 `Circuit(..., backend=...)` 或随后调用 `bind_backend()`）。
 
-```python
-from nexq import Circuit, Measure, NPUBackend, hadamard, cnot
-
-backend = NPUBackend.from_distributed_env(fallback_to_cpu=True)
-cir = Circuit(
-    hadamard(0),
-    cnot(1, [0]),
-    n_qubits=2,
-)
-
-result = Measure(backend).run(cir, shots=1024)
-print(result.backend_name)
-```
-
-适用场景：
-
-- 你希望电路对象可复用在多种后端上（CPU/GPU/NPU）
-- 希望保持 API 简洁，执行时再选择设备
-
-### 5.3 方式 B（前端构建电路时绑定后端）
-
-该方式在 `Circuit` 构建阶段指定 backend，前端矩阵组装与后端执行保持同一 XPU。
+示例：
 
 ```python
 from nexq import Circuit, Measure, NPUBackend, hadamard, cnot
@@ -392,21 +371,40 @@ cir = Circuit(
     backend=backend,
 )
 
-# Measure 会优先使用 circuit.backend（若存在）
+# Measure 也可以接收 backend，但会被 circuit.backend 优先覆盖
 result = Measure(backend).run(cir, shots=1024)
 print(result.backend_name)
+```
 
-更多说明（矩阵组装时机与 backend 使用）:
+要点说明：
+
+- **可以在两处指定 backend**：`Circuit` 或 `Measure` 都支持传入后端。
+- **优先级**：`Measure` 会优先使用 `circuit.backend`（若存在），否则使用 `Measure` 自身的后端（见 `Measure._resolve_backend` 的实现）。因此将后端绑定到 `Circuit` 能避免回退到主机端拼装或与 Measure 中传入后端的混淆。
+- **为什么推荐绑定到 `Circuit`**：当电路具有 `gates` 时，`Measure` 会逐门调用 `gate_to_matrix(..., backend=resolved_backend)` 在目标设备上构造并作用门矩阵，从而减少构造完整 2^n×2^n 矩阵的内存与主机→设备搬运；若 `unitary(backend=...)` 不被支持则会回退到无 backend 的 `unitary()`（在 CPU 上用 numpy 拼装整矩阵），然后再 `backend.cast` 到设备，这会引起大规模数据搬运。
+
+关于将多个电路合并（拼接）时的 backend 确定：
+
+- 使用 `+` 操作符拼接两个 `Circuit`（`a + b`）时，新电路会按实现选择后端：优先采用左侧电路的 backend（`a._backend`）；若左侧没有，则采用右侧的 backend（`b._backend`）。这与 `Circuit.__add__` 的实现一致。
+- 因此，若要把多个原本绑定到不同后端的 `Circuit` 连接成一个整体并在统一设备上运行，应在拼接后或拼接前显式统一后端：
+
+```python
+# 推荐做法：拼接后显式设置统一后端
+full = part_a + part_b
+full.bind_backend(common_backend)
+result = Measure(common_backend).run(full)
+```
+
+- 如果不显式统一后端，拼接结果会继承左侧电路的 backend（若左侧没有则用右侧），这可能不是预期且可能导致在运行时出现回退或不一致的行为。
+
+小结：将后端绑定到 `Circuit` 并在合并后或合并前统一后端，是既安全又高效的做法。
 
 - 构建阶段只保存门描述: 调用 `hadamard(0)` 等构造的是门的描述字典（例如 `{"type": "hadamard", "target_qubit": 0}`），`Circuit.__init__` 只是把这些描述存起来，并不会在构建时把门转换成数值矩阵。
 - 当前执行策略: `Measure.run`/`run_density_matrix` 在电路对象具备 `gates` 序列时，会优先走“逐门演化”路径（按门依次作用到态/密度矩阵），而不是先组装整条电路的全局矩阵后再一次性作用。
 - 矩阵在组装时生成: 真正把门变为 2^n×2^n 的数值矩阵发生在调用 `Circuit.unitary(backend=...)` 或 `Measure` 等需要数值矩阵的地方。此时会调用 `gate_to_matrix(gate, cir_qubits, backend)` 来生成每个门的矩阵。
-- backend 参数的作用: 当 `backend is None` 时，`gate_to_matrix` 会走 numpy 路径（例如调用 `_hadamard()` 等函数，在 CPU 上生成矩阵）；当传入 `backend` 时，`gate_to_matrix` 会使用后端分支（先构造 2×2 的 base 矩阵再通过 `_single_qubit_from_base_backend`/`_controlled_from_base_backend` 调用 `backend.cast`、`backend.kron`、`backend.matmul` 等接口），从而在目标后端（CPU/GPU/NPU）上构造和组合张量。
+- backend 参数的作用: 当 `backend=None` 时，`gate_to_matrix` 会走 numpy 路径（例如调用 `_hadamard()` 等函数，在 CPU 上生成矩阵）；当传入 `backend` 时，`gate_to_matrix` 会使用后端分支（先构造 2×2 的 base 矩阵再通过 `_single_qubit_from_base_backend`/`_controlled_from_base_backend` 调用 `backend.cast`、`backend.kron`、`backend.matmul` 等接口），从而在目标后端（CPU/GPU/NPU）上构造和组合张量。
 - 兼容回退路径: 若电路对象不提供 `gates` 序列，`Measure` 仍会回退到 `unitary()` 路径以兼容外部实现。
 - 可能的设备搬运: 在 `unitary()` 回退路径中，`Measure` 现在优先直接 `backend.cast(unitary_raw)`，避免无必要的 `to_numpy` 主机往返。
 - 性能建议: 对大 qubit 数，显式组装全矩阵会占用大量内存并产生迁移成本。若要最小化搬运，优先在构建时绑定后端（本节方式 B），或改为按门逐步在态上直接作用（逐门 apply），避免生成完整 2^n×2^n 矩阵；若需要彻底避免中间拷贝，可考虑修改 `Measure` 中的 `to_numpy` 使用点或直接在后端上逐门演化。
-
-```
 
 也可先构建再绑定：
 
