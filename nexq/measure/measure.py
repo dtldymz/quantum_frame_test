@@ -10,9 +10,9 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
 import numpy as np
 
-from ..circuit.gates import gate_to_matrix
-from ..circuit.density_matrix import DensityMatrix
-from ..circuit.state_vector import StateVector
+from ..core.gates import gate_to_matrix
+from ..core.density import DensityMatrix
+from ..core.state import StateVector
 from .result import Result
 from .sampler import Sampler
 

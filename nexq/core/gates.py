@@ -1,5 +1,5 @@
 """
-nexq/circuit/gates.py
+nexq/core/gates.py
 
 实现量子门矩阵构造逻辑。
 """
@@ -317,6 +317,31 @@ def _rzz(theta, qubit_1=0, qubit_2=1):
 def gate_to_matrix(gate, cir_qubits=1, backend=None):
     gate_type = gate["type"]
     gate_parameter = gate.get("parameter", None)
+
+    if gate_type == "unitary":
+        matrix = np.asarray(gate_parameter, dtype=_CDTYPE)
+        if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
+            raise ValueError("unitary 门参数必须是方阵")
+
+        dim = matrix.shape[0]
+        inferred = int(round(math.log2(dim))) if dim > 0 else 0
+        if (1 << inferred) != dim:
+            raise ValueError("unitary 门矩阵维度必须是 2 的幂")
+
+        gate_qubits = gate.get("n_qubits", inferred)
+        if (1 << int(gate_qubits)) != dim:
+            raise ValueError("unitary 门的 n_qubits 与矩阵维度不一致")
+
+        gate_matrix = matrix if backend is None else backend.cast(matrix)
+        if gate_qubits < cir_qubits:
+            for _ in range(gate_qubits, cir_qubits):
+                if backend is None:
+                    gate_matrix = np.kron(gate_matrix, IDENTITY_2)
+                else:
+                    gate_matrix = backend.kron(gate_matrix, backend.cast(IDENTITY_2))
+        elif gate_qubits > cir_qubits:
+            raise ValueError(f"量子门的量子比特数量超出总量子比特数: {gate_qubits} > {cir_qubits}")
+        return gate_matrix
 
     if backend is None:
         if gate_type in ["pauli_x", "X"]:

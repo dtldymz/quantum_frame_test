@@ -1,5 +1,5 @@
 """
-nexq/circuit/state_vector.py
+nexq/core/state.py
 
 纯量子态 |ψ⟩ 的面向对象封装。
 
@@ -17,7 +17,7 @@ import numpy as np
 
 if TYPE_CHECKING:
     from ..channel.backends.base import Backend
-    from .density_matrix import DensityMatrix
+    from .density import DensityMatrix
 
 
 def _normalize_bit_order(bit_order: Optional[str], default: str = "lsb") -> str:
@@ -79,7 +79,7 @@ class State:
     示例::
 
         from nexq.channel.backends import TorchBackend
-        from nexq.circuit import State
+        from nexq.core import State
 
         bk = TorchBackend()
         sv = State.zero_state(2, bk)                # |00⟩
@@ -131,14 +131,23 @@ class State:
         bit_order: str = "lsb",
     ) -> "State":
         """
-        从 numpy array / list 构造态向量。
+        从 numpy array / list 构造态向量（自动归一化）。
 
         参数:
-            array:    长度为 2^n 的一维或 (2^n,1) 的复数序列
+            array:    长度为 2^n 的一维或 (2^n,1) 的复数序列（无需预先归一化）
             n_qubits: 量子比特数
             backend:  计算后端
+            bit_order: 基态标签端序
         """
-        data = backend.cast(np.asarray(array, dtype=np.complex64))
+        np_array = np.asarray(array, dtype=np.complex64)
+        
+        # 计算范数并进行自动归一化
+        norm = float(np.linalg.norm(np_array))
+        if norm <= 0:
+            raise ValueError("输入数组范数必须大于 0")
+        normalized = np_array / norm
+        
+        data = backend.cast(normalized)
         return cls(data, n_qubits, backend, bit_order=bit_order)
 
     @property
@@ -287,7 +296,7 @@ class State:
         """
         将纯态转换为密度矩阵 ρ = |ψ⟩⟨ψ|。
         """
-        from .density_matrix import DensityMatrix
+        from .density import DensityMatrix
 
         bk = self._backend
         rho = bk.matmul(self._data, bk.dagger(self._data))

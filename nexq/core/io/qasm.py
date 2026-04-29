@@ -1,5 +1,5 @@
 """
-nexq/circuit/io/qasm.py
+nexq/core/io/qasm.py
 
 OpenQASM 2.0 / 3.0 导入导出（子集支持）。
 
@@ -19,7 +19,7 @@ import re
 from pathlib import Path
 from typing import Dict, List
 
-from ..model import Circuit
+from ..circuit import Circuit
 
 _QASM2_HEADER = 'OPENQASM 2.0;\ninclude "qelib1.inc";\n'
 _QASM3_HEADER = 'OPENQASM 3.0;\ninclude "stdgates.inc";\n'

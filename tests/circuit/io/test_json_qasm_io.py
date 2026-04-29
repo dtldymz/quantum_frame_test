@@ -6,13 +6,13 @@ import numpy as np
 import torch
 
 from nexq import Circuit, cnot, crx, cry, crz, hadamard, rx, swap, toffoli, u3
-from nexq.circuit.io.json_io import (
+from nexq.core.io.json_io import (
     circuit_from_json,
     circuit_to_json,
     load_circuit_json,
     save_circuit_json,
 )
-from nexq.circuit.io.qasm import (
+from nexq.core.io.qasm import (
     circuit_from_qasm,
     circuit_to_qasm,
     circuit_to_qasm3,

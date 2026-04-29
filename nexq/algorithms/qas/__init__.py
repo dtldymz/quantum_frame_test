@@ -1,14 +1,14 @@
 """nexq.algorithms.qas
 
-Quantum architecture search utilities and training entry points.
+Quantum architecture search and state-synthesis utilities.
 """
 
 from .expressibility import KL_Haar_relative, MMD_relative
-from .qas_rl_1 import TrainConfig, run_training
+from .state_qas import StateQASConfig, state_to_circuit
 
 __all__ = [
     "KL_Haar_relative",
     "MMD_relative",
-    "TrainConfig",
-    "run_training",
+    "state_to_circuit",
+    "StateQASConfig",
 ]

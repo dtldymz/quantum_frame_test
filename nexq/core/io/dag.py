@@ -1,5 +1,5 @@
 """
-nexq/circuit/io/dag.py
+nexq/core/io/dag.py
 
 将 Circuit 转换为 DAG 表示。
 """
@@ -10,7 +10,7 @@ from typing import List
 
 import numpy as np
 
-from ..model import Circuit
+from ..circuit import Circuit
 
 
 # ---------------------------------------------------------------------------

@@ -14,8 +14,8 @@ from typing import List, Optional
 import numpy as np
 
 from ...channel.backends.base import Backend
-from ...circuit.model import Circuit
-from ...circuit.state_vector import StateVector
+from ...core.circuit import Circuit
+from ...core.state import StateVector
 
 
 # ─────────────────────────────────────────────────────────────────────────

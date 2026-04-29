@@ -1,5 +1,5 @@
 """
-nexq/circuit/density_matrix.py
+nexq/core/density.py
 
 量子密度矩阵 ρ 的面向对象封装，同时支持纯态与混合态。
 
@@ -18,7 +18,7 @@ import numpy as np
 
 if TYPE_CHECKING:
     from ..channel.backends.base import Backend
-    from .state_vector import StateVector
+    from .state import StateVector
 
 
 class DensityMatrix:
@@ -28,7 +28,7 @@ class DensityMatrix:
     示例::
 
         from nexq.channel.backends import TorchBackend
-        from nexq.circuit import StateVector, DensityMatrix
+        from nexq.core import StateVector, DensityMatrix
 
         bk = TorchBackend()
         sv  = StateVector.zero_state(2, bk)

@@ -1,5 +1,5 @@
 """
-nexq/circuit/io/json_io.py
+nexq/core/io/json_io.py
 
 Circuit 的 JSON 序列化与反序列化。
 
@@ -15,7 +15,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict
 
-from ..model import Circuit
+from ..circuit import Circuit
 
 _FORMAT_VERSION = "1.0"
 

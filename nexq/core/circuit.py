@@ -1,5 +1,5 @@
 """
-nexq/circuit/model.py
+nexq/core/model.py
 
 nexq 内部 Circuit 数据结构与门字典构造器。
 """
@@ -16,6 +16,19 @@ from .gates import gate_to_matrix, identity
 
 def _required_n_qubits_from_gate(gate):
     gate_type = gate["type"]
+
+    if gate_type == "unitary":
+        if "n_qubits" in gate:
+            return int(gate["n_qubits"])
+        parameter = gate.get("parameter")
+        matrix = np.asarray(parameter)
+        if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
+            raise ValueError("unitary 门参数必须是方阵")
+        dim = matrix.shape[0]
+        inferred = int(round(math.log2(dim))) if dim > 0 else 0
+        if (1 << inferred) != dim:
+            raise ValueError("unitary 门矩阵维度必须是 2 的幂")
+        return inferred
 
     if gate_type in [
         "pauli_x",
@@ -77,6 +90,7 @@ def _single_gate_symbol(gate_type):
         "u3": "U3",
         "identity": "I",
         "I": "I",
+        "unitary": "U",
     }
     return symbols.get(gate_type)
 

@@ -10,7 +10,10 @@ nexq/
 │   │   ├── qubo/
 │   │   └── sb/
 │   ├── qas/
-│   │   └── expressibility.py		# 量子线路在Haar测度下的KL度量、MMD度量
+│   │   ├── __init__.py
+│   │   ├── expressibility.py           # 量子线路在Haar测度下的KL度量、MMD度量
+│   │   ├── state_qas.py                # RL 量子态合成（QuantumStateSearchEnvCore、Gymnasium 包装、stable-baselines3）
+│   │   └── README.md                   # QAS 模块使用说明
 │   ├── qml/
 │   ├── universal/
 │   ├── variational/
@@ -34,17 +37,17 @@ nexq/
 │   │   ├── channels.py
 │   │   └── model.py
 │
-├── circuit/                            # 电路模型、量子态、门矩阵、IO
+├── core/                               # 电路模型、量子态、门矩阵、IO
 │   ├── __init__.py
-│   ├── state_vector.py                 # 纯态表示 |ψ⟩
-│   ├── density_matrix.py               # 密度矩阵表示 ρ
+│   ├── state.py                        # 纯态表示 |ψ⟩（支持自动归一化）
+│   ├── density.py                      # 密度矩阵表示 ρ
 │   ├── gates.py                        # gate_to_matrix(..., backend=None)
-│   ├── model.py                        # Circuit(..., backend=None), unitary(backend=...)
+│   ├── circuit.py                      # Circuit(..., backend=None), unitary(backend=...)
 │   └── io/
 │       ├── __init__.py
-│       ├── dag.py			# 量子线路的有向图表示
+│       ├── dag.py                      # 量子线路的有向图表示
 │       ├── json_io.py
-│       └── qasm.py			# 量子线路与openqasm2.0/3.0互相转换
+│       └── qasm.py                     # 量子线路与openqasm2.0/3.0互相转换
 │
 ├── encoder/
 │   ├── __init__.py

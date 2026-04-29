@@ -1,4 +1,4 @@
-from .model import (
+from .circuit import (
     Circuit,
     ccnot,
     cnot,
@@ -23,8 +23,8 @@ from .model import (
     u2,
     u3,
 )
-from .state_vector import State, StateVector
-from .density_matrix import DensityMatrix
+from .state import State, StateVector
+from .density import DensityMatrix
 from .io.json_io import circuit_from_json, circuit_to_json, load_circuit_json, save_circuit_json
 from .io.qasm import (
     circuit_from_qasm,

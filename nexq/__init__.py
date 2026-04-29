@@ -2,8 +2,8 @@
 from .channel.backends.torch_backend import TorchBackend
 from .channel.backends.numpy_backend import NumpyBackend
 from .channel.backends.npu_backend import NPUBackend, NPURuntimeContext, npu_runtime_context_from_env
-from .circuit.state_vector import State, StateVector
-from .circuit.density_matrix import DensityMatrix
+from .core.state import State, StateVector
+from .core.density import DensityMatrix
 from .channel.operators import PauliOp, PauliString, Hamiltonian
 from .channel.noise import (
     AmplitudeDampingChannel,
@@ -15,7 +15,7 @@ from .channel.noise import (
 )
 from .measure.measure import Measure
 from .measure.result import Result
-from .circuit import (
+from .core import (
     Circuit,
     ccnot,
     cnot,
@@ -40,13 +40,13 @@ from .circuit import (
     u2,
     u3,
 )
-from .circuit.io.json_io import (
+from .core.io.json_io import (
     circuit_from_json,
     circuit_to_json,
     load_circuit_json,
     save_circuit_json,
 )
-from .circuit.io.qasm import (
+from .core.io.qasm import (
     circuit_from_qasm,
     circuit_to_qasm,
     circuit_to_qasm3,
