@@ -10,7 +10,7 @@ GHZ态（Greenberger–Horne–Zeilinger state）是一种最大纠缠态：
 1. 生成 3 量子比特 GHZ 态系数
 2. 使用 State.from_array() 创建量子态（自动归一化）
 3. 使用 state_to_circuit() 生成量子线路
-4. 将量子线路导出为 OpenQASM 2.0 格式文件
+4. 将量子线路导出为 OpenQASM 3.0 格式文件
 """
 
 import sys
@@ -26,6 +26,7 @@ from nexq.core.state import State
 from nexq.channel.backends.numpy_backend import NumpyBackend
 from nexq.core.io.qasm import circuit_to_qasm
 from nexq.algorithms.qas import state_to_circuit, StateQASConfig
+from nexq.algorithms.qas.state_qas import _default_action_gates
 
 
 def main():
@@ -67,9 +68,9 @@ def main():
         algo="ppo",  # 使用 PPO 算法
         total_timesteps=5000,  # RL 总训练步数
         max_timesteps=15,  # 最大电路深度（门数）
-        fidelity_threshold=0.90,  # 保真度阈值
-        reward_penalty=0.01,  # 线路深度惩罚
-        seed=42,
+        fidelity_threshold=0.95,  # 保真度阈值
+        reward_penalty=0.3,  # 线路深度惩罚
+        seed=46,
     )
     print(f"QAS 配置:")
     print(f"  算法: {config.algo}")
@@ -77,6 +78,13 @@ def main():
     print(f"  最大电路深度: {config.max_timesteps}")
     print(f"  保真度阈值: {config.fidelity_threshold}")
     print(f"  深度惩罚: {config.reward_penalty}")
+    action_gates = _default_action_gates(n_qubits)
+    cnot_gates = [gate for gate in action_gates if gate["type"] in {"cx", "cnot"}]
+    print(f"  动作空间门数: {len(action_gates)}")
+    print(f"  CNOT 有序对数量: {len(cnot_gates)}")
+    print("  CNOT 有序对列表:")
+    for gate in cnot_gates:
+        print(f"    q{gate['control_qubits'][0]} -> q{gate['target_qubit']}")
 
     circuit = state_to_circuit(target_state, config)
     print(f"量子线路已生成:")
@@ -90,10 +98,10 @@ def main():
     if len(circuit.gates) > 10:
         print(f"    ... 以及 {len(circuit.gates) - 10} 个其他门")
 
-    # Step 4: 将量子线路导出为 OpenQASM 2.0 文件
-    print(f"\n[Step 4] 导出到 OpenQASM 2.0 格式...")
-    qasm_str = circuit_to_qasm(circuit, version="2.0")
+    # Step 4: 将量子线路导出为 OpenQASM 3.0 文件
+    print(f"\n[Step 4] 导出到 OpenQASM 3.0 格式...")
     output_file = Path(__file__).parent / "state_qas_demo_circuit.qasm"
+    qasm_str = circuit_to_qasm(circuit, version="3.0")
     with open(output_file, "w") as f:
         f.write(qasm_str)
     print(f"✓ 已保存到: {output_file}")

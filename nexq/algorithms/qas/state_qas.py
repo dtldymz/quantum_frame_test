@@ -66,6 +66,30 @@ def _default_action_gates(n_qubits: int) -> List[Dict[str, Any]]:
     return gates
 
 
+def _optimize_circuit_gates(gates: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Cancel adjacent pairs on same qubit: XX, YY, ZZ, HH."""
+    cancellable_types = {"pauli_x", "pauli_y", "pauli_z", "hadamard"}
+    optimized: List[Dict[str, Any]] = []
+
+    for gate in gates:
+        if not optimized:
+            optimized.append(dict(gate))
+            continue
+
+        prev = optimized[-1]
+        same_type = prev.get("type") == gate.get("type")
+        same_qubit = prev.get("target_qubit") == gate.get("target_qubit")
+        no_controls = (not prev.get("control_qubits")) and (not gate.get("control_qubits"))
+        no_params = (prev.get("parameter") is None) and (gate.get("parameter") is None)
+
+        if same_type and same_qubit and gate.get("type") in cancellable_types and no_controls and no_params:
+            optimized.pop()
+        else:
+            optimized.append(dict(gate))
+
+    return optimized
+
+
 def _default_observables(n_qubits: int) -> List[Dict[str, Any]]:
     observables: List[Dict[str, Any]] = []
     for idx in range(n_qubits):
@@ -112,7 +136,6 @@ class StateQASConfig:
     fidelity_threshold: float = 0.95
     reward_penalty: float = 0.01
     seed: int = 42
-    eval_episodes: int = 10
     action_gates: Optional[List[Dict[str, Any]]] = None
 
 
@@ -287,29 +310,21 @@ def _make_core(target_state: State, config: StateQASConfig) -> QuantumStateSearc
     )
 
 
-def _evaluate_policy(model, env, episodes: int) -> Dict[str, Any]:
-    best_fidelity = -1.0
-    best_circuit = None
+def _rollout_once(model, env) -> Dict[str, Any]:
+    """Run one post-training episode, mirroring the original repo usage pattern."""
+    obs, _ = env.reset()
+    done = False
+    last_info: Dict[str, Any] = {}
 
-    for _ in range(episodes):
-        obs, _ = env.reset()
-        done = False
-        last_info = {}
-
-        while not done:
-            action, _ = model.predict(obs, deterministic=True)
-            obs, _, terminated, truncated, info = env.step(action)
-            done = bool(terminated or truncated)
-            last_info = info
-
-        fidelity = float(last_info.get("fidelity", -1.0))
-        if fidelity > best_fidelity:
-            best_fidelity = fidelity
-            best_circuit = last_info.get("circuit")
+    while not done:
+        action, _ = model.predict(obs)
+        obs, _, terminated, truncated, info = env.step(action)
+        done = bool(terminated or truncated)
+        last_info = info
 
     return {
-        "best_fidelity": best_fidelity,
-        "best_circuit": best_circuit,
+        "fidelity": float(last_info.get("fidelity", -1.0)),
+        "circuit": last_info.get("circuit"),
     }
 
 
@@ -336,28 +351,18 @@ def state_to_circuit(
 
     algo_cls = _get_sb3_algo(cfg.algo)
 
-    try:
-        from stable_baselines3.common.vec_env import DummyVecEnv
-    except ImportError as exc:
-        raise ImportError(
-            "需要安装 stable-baselines3 才能使用强化学习搜索: pip install stable-baselines3"
-        ) from exc
-
-    core = _make_core(state, cfg)
-
-    def _env_factory():
-        return QuantumStateSearchGymEnv(_make_core(state, cfg))
-
-    vec_env = DummyVecEnv([_env_factory])
-    model = algo_cls("MlpPolicy", vec_env, verbose=0, seed=cfg.seed)
+    train_env = QuantumStateSearchGymEnv(_make_core(state, cfg))
+    model = algo_cls("MlpPolicy", train_env, verbose=0, seed=cfg.seed)
     model.learn(total_timesteps=cfg.total_timesteps)
 
-    eval_env = QuantumStateSearchGymEnv(core)
-    eval_result = _evaluate_policy(model, eval_env, episodes=max(1, cfg.eval_episodes))
-    circuit = eval_result["best_circuit"]
+    eval_env = QuantumStateSearchGymEnv(_make_core(state, cfg))
+    eval_result = _rollout_once(model, eval_env)
+    circuit = eval_result["circuit"]
     if circuit is None:
-        circuit = core.build_circuit()
-    return circuit
+        circuit = _make_core(state, cfg).build_circuit()
+
+    optimized_gates = _optimize_circuit_gates(circuit.gates)
+    return Circuit(*optimized_gates, n_qubits=circuit.n_qubits, backend=circuit.backend)
 
 
 __all__ = [
