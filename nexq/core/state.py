@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from .density import DensityMatrix
 
 
-def _normalize_bit_order(bit_order: Optional[str], default: str = "lsb") -> str:
+def _normalize_bit_order(bit_order: Optional[str], default: str = "msb") -> str:
     order = default if bit_order is None else bit_order.lower()
     if order not in {"lsb", "msb"}:
         raise ValueError("bit_order 只能是 'lsb' 或 'msb'")
@@ -89,7 +89,7 @@ class State:
         print(sv2.measure(shots=1024))
     """
 
-    def __init__(self, data, n_qubits: int, backend: "Backend", bit_order: str = "lsb"):
+    def __init__(self, data, n_qubits: int, backend: "Backend", bit_order: str = "msb"):
         """
         参数:
             data:     后端张量，shape (2^n, 1) 或 (2^n,)
@@ -103,7 +103,10 @@ class State:
         np_data = backend.to_numpy(data)
         if np_data.ndim == 1:
             np_data = np_data.reshape(-1, 1)
-        self._data = backend.cast(np_data)
+        casted = backend.cast(np_data)
+        if casted is None:
+            raise TypeError("backend.cast 返回了 None，无法构造 State")
+        self._data = casted
 
         expected = 1 << n_qubits
         if self._data.shape[0] != expected:
@@ -116,7 +119,7 @@ class State:
         cls,
         n_qubits: int,
         backend: "Backend",
-        bit_order: str = "lsb",
+        bit_order: str = "msb",
     ) -> "State":
         """创建 |0⊗n⟩ 计算基基态。"""
         data = backend.zeros_state(n_qubits)
@@ -128,7 +131,7 @@ class State:
         array,
         n_qubits: int,
         backend: "Backend",
-        bit_order: str = "lsb",
+        bit_order: str = "msb",
     ) -> "State":
         """
         从 numpy array / list 构造态向量（自动归一化）。
@@ -222,7 +225,10 @@ class State:
         参数:
             operator: (2^n, 2^n) Hermitian 算符（后端原生张量）
         """
-        return self._backend.expectation_sv(self._data, operator)
+        value = self._backend.expectation_sv(self._data, operator)
+        if value is None:
+            raise TypeError("backend.expectation_sv 返回了 None")
+        return float(value)
 
     def inner_product(self, other: "State"):
         """
@@ -277,11 +283,11 @@ class State:
             bit_order=target_order,
         )
 
-    def to_big_endian(self) -> "State":
+    def msb(self) -> "State":
         """转换为大端序（MSB）表示。"""
         return self.reorder_endianness("msb")
 
-    def to_little_endian(self) -> "State":
+    def lsb(self) -> "State":
         """转换为小端序（LSB）表示。"""
         return self.reorder_endianness("lsb")
 

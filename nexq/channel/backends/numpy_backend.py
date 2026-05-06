@@ -64,7 +64,12 @@ class NumpyBackend(Backend):
     # ──────────────────────── 线性代数 ──────────────────────────
 
     def matmul(self, a, b):
-        return a @ b
+        # Promote to complex128 during multiplication to reduce backend/BLAS
+        # overflow/invalid warnings on some platforms, then cast back.
+        a128 = np.asarray(a, dtype=np.complex128)
+        b128 = np.asarray(b, dtype=np.complex128)
+        out = a128 @ b128
+        return out.astype(self._dtype)
 
     def kron(self, a, b):
         return np.kron(a, b)

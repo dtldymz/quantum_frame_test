@@ -6,9 +6,13 @@ nexq/
 ├── algorithms/                         # 算法层（QAS/QML/Variational/Universal 等）
 │   ├── __init__.py
 │   ├── chemistry/
+│   │   └── __init__.py
 │   ├── optimizers/
+│   │   ├── __init__.py
 │   │   ├── qubo/
+│   │   │   └── __init__.py
 │   │   └── sb/
+│   │       └── __init__.py
 │   ├── qas/
 │   │   ├── __init__.py
 │   │   ├── README.md
@@ -22,18 +26,26 @@ nexq/
 │   │       ├── PPO_RB_demo_dicke3.py
 │   │       ├── PPR_DQL_demo_ghz3.py
 │   │       ├── CRLQAS_demo_h2.py
+│   │       ├── ppo_rb_ghz3_circuit.qasm
 │   │       ├── ppo_rb_ghz4_circuit.qasm
 │   │       ├── ppo_rb_w3_circuit.qasm
 │   │       ├── ppo_rb_dicke3_circuit.qasm
 │   │       ├── ppr_dql_ghz3_circuit.qasm
 │   │       └── crlqas_h2_circuit.qasm
 │   ├── qml/
+│   │   └── __init__.py
 │   ├── universal/
+│   │   └── __init__.py
 │   ├── variational/
+│   │   ├── __init__.py
 │   │   ├── ansatz/
+│   │   │   └── __init__.py
 │   │   ├── qaoa/
+│   │   │   └── __init__.py
 │   │   └── vqe/
+│   │       └── __init__.py
 │   └── wireless/
+│       └── __init__.py
 │
 ├── channel/                            # 后端抽象、噪声与算符
 │   ├── __init__.py
@@ -65,8 +77,10 @@ nexq/
 │
 ├── encoder/
 │   ├── __init__.py
-│   ├── base.py
-│   └── encoders.py
+│   ├── abstract.py
+│   ├── basic.py
+│   └── demo/
+│       └── encode_1234_demo.py
 │
 └── measure/                            # 执行与测量入口
     ├── __init__.py
