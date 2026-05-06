@@ -1,10 +1,10 @@
-# nexq.optimization
+# nexq.optimizer
 
-本文件记录 `nexq.optimization.basic` 中的本地化简规则，便于维护与回归测试。
+本文件记录 `nexq.optimizer.basic` 中的本地化简规则，便于维护与回归测试。
 
 ## 概述
 
-`nexq.optimization.basic.optimize_basic` 实现了一组简单的局部门级化简与合并规则，用于消除明显的冗余门并合并可合并的相邻旋转门，目的是减小导出后电路的体积并改善可读性。
+`nexq.optimizer.basic.optimize_basic` 实现了一组简单的局部门级化简与合并规则，用于消除明显的冗余门并合并可合并的相邻旋转门，目的是减小导出后电路的体积并改善可读性。
 
 这些优化可接受多种输入形式并保持输出类型：
 - `Circuit` / `list[gate_dict]` / dict(`gates`, `n_qubits`)（记作 dict 路径）
@@ -73,9 +73,9 @@ rx(0.3) q[0];
   - qasm 路径的旋转合并（含 `pi` 表达式解析）；
   - 固定点迭代收敛性。
 
-## 实现细节指引
+-## 实现细节指引
 
-- 主要实现文件：`nexq/optimization/basic.py`。
+- 主要实现文件：`nexq/optimizer/basic.py`。
 - 合并逻辑仅处理“无控制”的单量子比特旋转；对受控旋转、三角函数等更复杂的恒等/合并关系不作尝试，以保持实现简单且高效。
 
 如需将来扩展到更复杂的合并（例如等价变换、整数倍 pi 归约、模 2π 归约等），请在该 README 中记录新增规则并对应添加覆盖测试。

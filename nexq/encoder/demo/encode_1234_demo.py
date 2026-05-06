@@ -14,7 +14,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from nexq.encoder.basic import AmplitudeEncoder, AngleEncoder, BasisEncoder
 from nexq.core.io.qasm import circuit_to_qasm3
-from nexq.optimization import optimize_basic
+from nexq.optimizer import optimize_basic
 
 
 def _angle_equivalent(a, b, atol=1e-6):
