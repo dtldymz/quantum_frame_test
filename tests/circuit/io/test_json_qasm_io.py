@@ -158,6 +158,102 @@ u1(pi/6) q[0];
         self.assertEqual(circ.gates[0]["type"], "rz")
         self.assertEqual(circ.gates[1]["type"], "rz")
 
+    def test_qasm3_multi_control_cry_decomposition_preserves_action(self):
+        circ = Circuit(
+            {
+                "type": "cry",
+                "target_qubit": 3,
+                "control_qubits": [0, 1, 2],
+                "control_states": [0, 1, 0],
+                "parameter": np.pi / 6,
+            },
+            n_qubits=4,
+        )
+
+        qasm3 = circuit_to_qasm3(circ)
+        self.assertIn("qubit[4] q;", qasm3)
+        self.assertIn("qubit[2] anc;", qasm3)
+        self.assertIn("ccx q[0],q[1],anc[0];", qasm3)
+        self.assertRegex(qasm3, r"cry\((pi/6|0\.523598775598299)\) anc\[1\],q\[3\];")
+        self.assertIn("x q[0];", qasm3)
+        self.assertIn("x q[2];", qasm3)
+
+        rebuilt = circuit_from_qasm(qasm3)
+        self.assertEqual(rebuilt.n_qubits, 6)
+
+        original_unitary = circ.unitary()
+        rebuilt_unitary = rebuilt.unitary()
+        ancilla_dim = 1 << (rebuilt.n_qubits - circ.n_qubits)
+
+        for basis_index in range(1 << circ.n_qubits):
+            basis_state = np.zeros(1 << circ.n_qubits, dtype=np.complex64)
+            basis_state[basis_index] = 1.0
+            expected = original_unitary @ basis_state
+
+            embedded = np.zeros(1 << rebuilt.n_qubits, dtype=np.complex64)
+            embedded[basis_index << (rebuilt.n_qubits - circ.n_qubits)] = 1.0
+            actual = rebuilt_unitary @ embedded
+            actual = actual.reshape(1 << circ.n_qubits, ancilla_dim)
+
+            np.testing.assert_allclose(actual[:, 0], expected, atol=1e-6)
+            np.testing.assert_allclose(actual[:, 1:], 0.0, atol=1e-6)
+
+    def test_qasm3_single_control_cry_not_decomposed(self):
+        circ = Circuit(
+            {
+                "type": "cry",
+                "target_qubit": 1,
+                "control_qubits": [0],
+                "control_states": [1],
+                "parameter": np.pi / 4,
+            },
+            n_qubits=2,
+        )
+
+        qasm3 = circuit_to_qasm3(circ)
+        self.assertIn("qubit[2] q;", qasm3)
+        self.assertNotIn("qubit[", "\n".join([line for line in qasm3.splitlines() if "anc" in line]))
+        self.assertRegex(qasm3, r"cry\((pi/4|0\.785398163397448)\) q\[0\],q\[1\];")
+        self.assertNotIn("ccx ", qasm3)
+
+    def test_qasm3_multi_control_crx_crz_decomposition_preserves_action(self):
+        for gate_name, angle in (("crx", np.pi / 7), ("crz", np.pi / 5)):
+            circ = Circuit(
+                {
+                    "type": gate_name,
+                    "target_qubit": 3,
+                    "control_qubits": [0, 1, 2],
+                    "control_states": [1, 0, 1],
+                    "parameter": angle,
+                },
+                n_qubits=4,
+            )
+
+            qasm3 = circuit_to_qasm3(circ)
+            self.assertIn("qubit[2] anc;", qasm3)
+            self.assertIn(f"{gate_name}(", qasm3)
+            self.assertIn("ccx q[0],q[1],anc[0];", qasm3)
+
+            rebuilt = circuit_from_qasm(qasm3)
+            self.assertEqual(rebuilt.n_qubits, 6)
+
+            original_unitary = circ.unitary()
+            rebuilt_unitary = rebuilt.unitary()
+            ancilla_dim = 1 << (rebuilt.n_qubits - circ.n_qubits)
+
+            for basis_index in range(1 << circ.n_qubits):
+                basis_state = np.zeros(1 << circ.n_qubits, dtype=np.complex64)
+                basis_state[basis_index] = 1.0
+                expected = original_unitary @ basis_state
+
+                embedded = np.zeros(1 << rebuilt.n_qubits, dtype=np.complex64)
+                embedded[basis_index << (rebuilt.n_qubits - circ.n_qubits)] = 1.0
+                actual = rebuilt_unitary @ embedded
+                actual = actual.reshape(1 << circ.n_qubits, ancilla_dim)
+
+                np.testing.assert_allclose(actual[:, 0], expected, atol=1e-6)
+                np.testing.assert_allclose(actual[:, 1:], 0.0, atol=1e-6)
+
 
 if __name__ == "__main__":
     unittest.main()

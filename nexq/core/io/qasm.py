@@ -142,6 +142,65 @@ def _parse_qasm_angle(expr: str) -> float:
     return float(value)
 
 
+def _normalized_control_data(gate: Dict[str, object]) -> tuple[List[int], List[int]]:
+    """返回规范化后的控制位与控制态列表。"""
+    controls = [int(q) for q in gate.get("control_qubits", []) or []]
+    raw_states = gate.get("control_states")
+    if raw_states is None:
+        return controls, [1] * len(controls)
+
+    control_states = [int(state) for state in raw_states]
+    if len(control_states) != len(controls):
+        raise ValueError("control_states 的长度必须与 control_qubits 一致")
+    if any(state not in (0, 1) for state in control_states):
+        raise ValueError("QASM 导出仅支持二值控制态 0/1")
+    return controls, control_states
+
+
+def _control_state_wrapper_lines(controls: List[int], control_states: List[int]) -> tuple[List[str], List[str]]:
+    """将 |0> 控制态转换为前后包裹的 X 门。"""
+    zero_controls = [ctrl for ctrl, state in zip(controls, control_states) if state == 0]
+    pre = [f"x q[{ctrl}];" for ctrl in zero_controls]
+    post = [f"x q[{ctrl}];" for ctrl in reversed(zero_controls)]
+    return pre, post
+
+
+def _qasm3_required_ancilla_count(circuit: Circuit) -> int:
+    """计算 QASM 3.0 导出多控 crx/cry/crz 所需的最大辅助比特数。"""
+    max_ancillas = 0
+    for gate in circuit.gates:
+        gtype = _normalize_gate_type_for_export(gate["type"])
+        if gtype not in {"crx", "cry", "crz"}:
+            continue
+        controls, _ = _normalized_control_data(gate)
+        if len(controls) > 1:
+            max_ancillas = max(max_ancillas, len(controls) - 1)
+    return max_ancillas
+
+
+def _append_qasm3_multi_control_rotation(
+    lines: List[str], gate_name: str, controls: List[int], target: int, theta: str
+) -> None:
+    """将多控 crx/cry/crz 分解为 ccx + 单控旋转门 + 反计算序列。"""
+    if len(controls) < 2:
+        raise ValueError(f"多控 {gate_name} 分解至少需要两个控制位")
+
+    lines.append(f"ccx q[{controls[0]}],q[{controls[1]}],anc[0];")
+    for control_index in range(2, len(controls)):
+        prev_anc = f"anc[{control_index - 2}]"
+        next_anc = f"anc[{control_index - 1}]"
+        lines.append(f"ccx q[{controls[control_index]}],{prev_anc},{next_anc};")
+
+    aggregate_control = f"anc[{len(controls) - 2}]"
+    lines.append(f"{gate_name}({theta}) {aggregate_control},q[{target}];")
+
+    for control_index in range(len(controls) - 1, 1, -1):
+        prev_anc = f"anc[{control_index - 2}]"
+        next_anc = f"anc[{control_index - 1}]"
+        lines.append(f"ccx q[{controls[control_index]}],{prev_anc},{next_anc};")
+    lines.append(f"ccx q[{controls[0]}],q[{controls[1]}],anc[0];")
+
+
 def circuit_to_qasm(circuit: Circuit, version: str = "2.0") -> str:
     """将 Circuit 导出为 OpenQASM 字符串，支持 2.0 和 3.0。"""
     if not hasattr(circuit, "n_qubits") or not hasattr(circuit, "gates"):
@@ -158,12 +217,15 @@ def circuit_to_qasm(circuit: Circuit, version: str = "2.0") -> str:
     else:
         lines.append(_QASM3_HEADER.rstrip("\n"))
         lines.append(f"qubit[{int(circuit.n_qubits)}] q;")
+        ancilla_count = _qasm3_required_ancilla_count(circuit)
+        if ancilla_count > 0:
+            lines.append(f"qubit[{ancilla_count}] anc;")
 
     for gate in circuit.gates:
         gtype = _normalize_gate_type_for_export(gate["type"])
-
-        if gate.get("control_states") not in (None, [1]):
-            raise ValueError("QASM 导出暂不支持非 |1> 控制态")
+        controls, control_states = _normalized_control_data(gate)
+        pre_lines, post_lines = _control_state_wrapper_lines(controls, control_states)
+        lines.extend(pre_lines)
 
         if gtype in _SINGLE_NO_PARAM_EXPORT:
             qasm_gate = _SINGLE_NO_PARAM_EXPORT[gtype]
@@ -193,15 +255,16 @@ def circuit_to_qasm(circuit: Circuit, version: str = "2.0") -> str:
                 q2 = int(gate["qubit_2"])
                 lines.append(f"swap q[{q1}],q[{q2}];")
             elif qasm_gate in {"crx", "cry", "crz"}:
-                controls = gate.get("control_qubits", [])
-                if len(controls) != 1:
-                    raise ValueError(f"QASM 导出仅支持单控制门，当前: {gtype} controls={controls}")
-                c = int(controls[0])
                 t = int(gate["target_qubit"])
                 theta = _format_angle(gate["parameter"])
-                lines.append(f"{qasm_gate}({theta}) q[{c}],q[{t}];")
+                if version_norm == "3.0" and len(controls) > 1:
+                    _append_qasm3_multi_control_rotation(lines, qasm_gate, controls, t, theta)
+                else:
+                    if len(controls) != 1:
+                        raise ValueError(f"QASM 导出仅支持单控制门，当前: {gtype} controls={controls}")
+                    c = int(controls[0])
+                    lines.append(f"{qasm_gate}({theta}) q[{c}],q[{t}];")
             else:
-                controls = gate.get("control_qubits", [])
                 if len(controls) != 1:
                     raise ValueError(f"QASM 导出仅支持单控制门，当前: {gtype} controls={controls}")
                 c = int(controls[0])
@@ -209,7 +272,6 @@ def circuit_to_qasm(circuit: Circuit, version: str = "2.0") -> str:
                 lines.append(f"{qasm_gate} q[{c}],q[{t}];")
         elif gtype in _THREE_EXPORT:
             qasm_gate = _THREE_EXPORT[gtype]
-            controls = gate.get("control_qubits", [])
             if len(controls) != 2:
                 raise ValueError(f"QASM 导出仅支持双控制 Toffoli，当前 controls={controls}")
             c1, c2 = int(controls[0]), int(controls[1])
@@ -217,6 +279,8 @@ def circuit_to_qasm(circuit: Circuit, version: str = "2.0") -> str:
             lines.append(f"{qasm_gate} q[{c1}],q[{c2}],q[{t}];")
         else:
             raise ValueError(f"QASM 导出暂不支持门类型: {gtype}")
+
+        lines.extend(post_lines)
 
     return "\n".join(lines) + "\n"
 

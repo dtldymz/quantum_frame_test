@@ -13,6 +13,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from nexq.encoder.basic import AmplitudeEncoder, AngleEncoder, BasisEncoder
+from nexq.core.io.qasm import circuit_to_qasm3
+from nexq.optimizer.basic import optimize_basic
 
 
 def _angle_equivalent(a, b, atol=1e-6):
@@ -59,21 +61,38 @@ def demo_angle(data):
 def demo_basis(data, repeat=False):
     encoder = BasisEncoder(repeat=repeat)
     circuit, state = encoder.encode(data, cir="dict")
+    # Optimize the generated circuit before exporting
+    optimized_circuit = optimize_basic(circuit)
+    qasm3 = circuit_to_qasm3(optimized_circuit)
+    # Run one more optimization pass on exported QASM text
+    qasm3 = optimize_basic(qasm3, input_type="qasm")
+    qasm_path = pathlib.Path(__file__).with_name(
+        f"encode_1234_demo_repeat_{str(repeat).lower()}.qasm"
+    )
+    # Always (re)write the QASM file on each run: remove existing file then write
+    if qasm_path.exists():
+        try:
+            qasm_path.unlink()
+        except Exception:
+            pass
+    qasm_path.write_text(qasm3, encoding="utf-8")
     decoded = encoder.decode(state)
     probs = state.probabilities()
 
     print(f"=== BasisEncoder (repeat={repeat}) ===")
     print("input array:", data)
     print("n_qubits:", state.n_qubits)
-    print("circuit gates:", circuit.gates)
+    print("original circuit gates:", circuit.gates)
+    print("optimized circuit gates:", getattr(optimized_circuit, 'gates', optimized_circuit))
     print("state:", state.format())
     print("probabilities:", np.round(probs, 6))
+    print("OpenQASM 3.0 file:", qasm_path, "(written/overwritten)")
     print("decoded bits:", decoded)
     print()
 
 
 def main():
-    data = (1, 1, 3, 4)
+    data = (1, 1, 1, 4)
     print("Input data:", data)
     print()
 
