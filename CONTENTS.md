@@ -78,7 +78,9 @@ nexq/
 ├── encoder/
 │   ├── __init__.py
 │   ├── abstract.py
-│   ├── basic.py
+│   ├── amplitude.py
+│   ├── angle.py
+│   ├── basis.py
 │   └── demo/
 │       └── encode_1234_demo.py
 │

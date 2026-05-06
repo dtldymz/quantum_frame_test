@@ -111,3 +111,77 @@ rz(0.5) q[0];
     assert "ry(pi/2) q[1];" not in out
     assert "ry(-pi/2) q[1];" not in out
     assert "rz(0.9) q[0];" in out
+
+
+def test_optimize_basic_qasm_safe_limited_reorder_for_single_qubit_gates():
+    qasm = """OPENQASM 3.0;
+include \"stdgates.inc\";
+qubit[2] q;
+x q[1];
+x q[0];
+x q[1];
+"""
+    out = optimize_basic(qasm)
+    assert isinstance(out, str)
+    # x(q1) and x(q1) are separated only by a disjoint single-qubit gate x(q0),
+    # so they can be safely cancelled by limited reordering logic.
+    assert "x q[1];" not in out
+    assert "x q[0];" in out
+
+
+def test_optimize_basic_qasm_safe_limited_reorder_does_not_cross_multi_qubit_gate():
+    qasm = """OPENQASM 3.0;
+include \"stdgates.inc\";
+qubit[3] q;
+x q[2];
+ccx q[0], q[1], q[2];
+x q[2];
+"""
+    out = optimize_basic(qasm)
+    assert isinstance(out, str)
+    # Unknown/multi-qubit gate (ccx) is treated as a hard barrier for safe reordering.
+    assert out.count("x q[2];") == 2
+
+
+def test_optimize_basic_qasm_safe_limited_reorder_crosses_commuting_cnot_target_x():
+    qasm = """OPENQASM 3.0;
+include \"stdgates.inc\";
+qubit[2] q;
+x q[1];
+cx q[0], q[1];
+x q[1];
+"""
+    out = optimize_basic(qasm)
+    assert isinstance(out, str)
+    # x on CNOT target commutes with CNOT, so the two x gates can cancel.
+    assert out.count("x q[1];") == 0
+    assert "cx q[0], q[1];" in out
+
+
+def test_optimize_basic_qasm_safe_limited_reorder_crosses_commuting_cnot_control_z():
+    qasm = """OPENQASM 3.0;
+include \"stdgates.inc\";
+qubit[2] q;
+z q[0];
+cx q[0], q[1];
+z q[0];
+"""
+    out = optimize_basic(qasm)
+    assert isinstance(out, str)
+    # z on CNOT control commutes with CNOT, so the two z gates can cancel.
+    assert out.count("z q[0];") == 0
+    assert "cx q[0], q[1];" in out
+
+
+def test_optimize_basic_qasm_safe_limited_reorder_not_cross_non_commuting_cnot_control_x():
+    qasm = """OPENQASM 3.0;
+include \"stdgates.inc\";
+qubit[2] q;
+x q[0];
+cx q[0], q[1];
+x q[0];
+"""
+    out = optimize_basic(qasm)
+    assert isinstance(out, str)
+    # x on CNOT control is not in the known-safe commuting subset.
+    assert out.count("x q[0];") == 2

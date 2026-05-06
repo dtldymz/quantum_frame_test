@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from nexq.encoder.basic import BasisEncoder
+from nexq.encoder.basis import BasisEncoder
 
 
 class TestBasisEncoder(unittest.TestCase):

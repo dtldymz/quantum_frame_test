@@ -12,7 +12,9 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from nexq.encoder.basic import AmplitudeEncoder, AngleEncoder, BasisEncoder
+from nexq.encoder.amplitude import AmplitudeEncoder
+from nexq.encoder.angle import AngleEncoder
+from nexq.encoder.basis import BasisEncoder
 from nexq.core.io.qasm import circuit_to_qasm3
 from nexq.optimizer import optimize_basic
 

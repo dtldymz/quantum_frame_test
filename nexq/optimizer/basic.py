@@ -201,9 +201,38 @@ def _cancel_qasm_pair(prev: _QasmStmt, curr: _QasmStmt) -> bool:
     return False
 
 
+def _is_single_qubit_qasm_gate(stmt: _QasmStmt) -> bool:
+    return stmt.kind == "gate" and stmt.q0 is not None and stmt.q1 is None
+
+
+def _is_cnot_qasm_gate(stmt: _QasmStmt) -> bool:
+    return stmt.kind == "gate" and stmt.family == "cnot" and stmt.q0 is not None and stmt.q1 is not None
+
+
+def _single_qubit_commutes_with_cnot(single: _QasmStmt, cnot: _QasmStmt) -> bool:
+    if not _is_single_qubit_qasm_gate(single) or not _is_cnot_qasm_gate(cnot):
+        return False
+
+    assert single.q0 is not None and cnot.q0 is not None and cnot.q1 is not None
+    q = single.q0
+    ctrl = cnot.q0
+    targ = cnot.q1
+    fam = single.family
+
+    # Known safe commuting subsets for CNOT:
+    # - On control qubit: Z-family phase ops commute.
+    # - On target qubit: X-family ops commute.
+    if q == ctrl and fam in {"z", "s", "sdg", "rz"}:
+        return True
+    if q == targ and fam in {"x", "rx"}:
+        return True
+    return False
+
+
 def _optimize_qasm_text(qasm_text: str) -> str:
     rows = qasm_text.splitlines()
     kept: list[_QasmStmt] = []
+    max_reorder_hops = 8
     for row in rows:
         stmt = _parse_qasm_stmt(row)
 
@@ -236,8 +265,77 @@ def _optimize_qasm_text(qasm_text: str) -> str:
 
         if kept and _cancel_qasm_pair(kept[-1], stmt):
             kept.pop()
-        else:
-            kept.append(stmt)
+            continue
+
+        # Safe limited reordering (no actual text swap):
+        # For a single-qubit gate on q, look back through at most N trailing
+        # single-qubit gates on *other* qubits; if we can cancel/merge with
+        # a same-qubit predecessor, do it directly.
+        if _is_single_qubit_qasm_gate(stmt):
+            consumed = False
+            hops = 0
+            idx = len(kept) - 1
+            while idx >= 0 and hops < max_reorder_hops:
+                prev = kept[idx]
+
+                # Barriers stop lookback.
+                if prev.kind != "gate":
+                    break
+
+                # Known commuting two-qubit pattern: single-qubit gate commuting with CNOT.
+                if _is_cnot_qasm_gate(prev):
+                    if _single_qubit_commutes_with_cnot(stmt, prev):
+                        hops += 1
+                        idx -= 1
+                        continue
+                    break
+
+                # Unknown/multi-qubit gates stop lookback.
+                if not _is_single_qubit_qasm_gate(prev):
+                    break
+
+                assert stmt.q0 is not None and prev.q0 is not None
+                if prev.q0 != stmt.q0:
+                    hops += 1
+                    idx -= 1
+                    continue
+
+                # Found a same-qubit predecessor.
+                if _cancel_qasm_pair(prev, stmt):
+                    del kept[idx]
+                    consumed = True
+                    break
+
+                if (
+                    prev.family in {"rx", "ry", "rz"}
+                    and prev.family == stmt.family
+                    and prev.theta is not None
+                    and stmt.theta is not None
+                ):
+                    merged = prev.theta + stmt.theta
+                    if np.isclose(merged, 0.0, atol=1e-15):
+                        del kept[idx]
+                    else:
+                        gate_name = prev.family
+                        q = prev.q0
+                        assert gate_name is not None and q is not None
+                        kept[idx] = _QasmStmt(
+                            raw=f"{gate_name}({_format_qasm_angle(merged)}) {q};",
+                            kind="gate",
+                            family=gate_name,
+                            q0=q,
+                            theta=merged,
+                        )
+                    consumed = True
+                    break
+
+                # Same qubit but not combinable: stop.
+                break
+            if not consumed:
+                kept.append(stmt)
+            continue
+
+        kept.append(stmt)
 
     optimized = "\n".join(s.raw for s in kept)
     if qasm_text.endswith("\n") and not optimized.endswith("\n"):
