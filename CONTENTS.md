@@ -82,16 +82,17 @@ nexq/
 │   └── demo/
 │       └── encode_1234_demo.py
 │
-├── optimization/                       # 优化器（重命名自 nexq/optimizer）
+├── optimization/                       # 量子线路优化器
 │   ├── __init__.py
 │   ├── basic.py
 │   └── README.md
 │
 └── measure/                            # 执行与测量入口
-    ├── __init__.py
-    ├── measure.py                      # 优先 circuit.backend，再回退 Measure.backend
-    ├── sampler.py
-    └── result.py
+  ├── __init__.py
+  ├── measure.py                      # 优先 circuit.backend，再回退 Measure.backend
+  ├── sampler.py
+  └── result.py
+
 ```
 
 ## 执行路径说明
