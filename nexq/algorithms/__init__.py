@@ -10,6 +10,6 @@
 
 """
 
-from . import universal, qml, variational, qas, chemistry, optimizers, wireless
+from . import universal, qml, variational, qas, chemistry, optimization, wireless
 
-__all__ = ["universal", "qml", "variational", "qas", "chemistry", "optimizers", "wireless"]
+__all__ = ["universal", "qml", "variational", "qas", "chemistry", "optimization", "wireless"]
