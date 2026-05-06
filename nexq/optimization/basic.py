@@ -1,4 +1,7 @@
-"""Basic local rewrite optimizer for circuit dict/qasm/dag forms."""
+"""Basic local rewrite optimizer for circuit dict/qasm/dag forms.
+
+This module is a direct rename/move of the former `nexq.optimizer.basic`.
+"""
 
 from __future__ import annotations
 

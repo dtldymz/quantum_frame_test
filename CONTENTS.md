@@ -82,6 +82,11 @@ nexq/
 │   └── demo/
 │       └── encode_1234_demo.py
 │
+├── optimization/                       # 优化器（重命名自 nexq/optimizer）
+│   ├── __init__.py
+│   ├── basic.py
+│   └── README.md
+│
 └── measure/                            # 执行与测量入口
     ├── __init__.py
     ├── measure.py                      # 优先 circuit.backend，再回退 Measure.backend

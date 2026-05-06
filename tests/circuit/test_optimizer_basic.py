@@ -2,7 +2,7 @@ import numpy as np
 
 from nexq.core.circuit import Circuit
 from nexq.core.io.dag import circuit_to_dag
-from nexq.optimizer.basic import optimize_basic
+from nexq.optimization import optimize_basic
 
 
 def test_optimize_basic_dict_cancellations():
