@@ -60,8 +60,8 @@ def demo_angle(data):
     print()
 
 
-def demo_basis(data, repeat=False):
-    encoder = BasisEncoder(repeat=repeat)
+def demo_basis(data, redundant=False):
+    encoder = BasisEncoder(redundant=redundant)
     circuit, state = encoder.encode(data, cir="dict")
     # Optimize the generated circuit before exporting
     optimized_circuit = optimize_basic(circuit)
@@ -69,7 +69,7 @@ def demo_basis(data, repeat=False):
     # Run one more optimization pass on exported QASM text
     qasm3 = optimize_basic(qasm3, input_type="qasm")
     qasm_path = pathlib.Path(__file__).with_name(
-        f"encode_1234_demo_repeat_{str(repeat).lower()}.qasm"
+        f"encode_1234_demo_redundant_{str(redundant).lower()}.qasm"
     )
     # Always (re)write the QASM file on each run: remove existing file then write
     if qasm_path.exists():
@@ -81,7 +81,7 @@ def demo_basis(data, repeat=False):
     decoded = encoder.decode(state)
     probs = state.probabilities()
 
-    print(f"=== BasisEncoder (repeat={repeat}) ===")
+    print(f"=== BasisEncoder (redundant={redundant}) ===")
     print("input array:", data)
     print("n_qubits:", state.n_qubits)
     print("original circuit gates:", circuit.gates)
@@ -94,14 +94,14 @@ def demo_basis(data, repeat=False):
 
 
 def main():
-    data = (1, 1, 1, 4)
+    data = (1, 1, 2, 4, 4, 3)
     print("Input data:", data)
     print()
 
     demo_amplitude(data)
     demo_angle(data)
-    demo_basis(data, repeat=False)
-    demo_basis(data, repeat=True)
+    demo_basis(data, redundant=False)
+    demo_basis(data, redundant=True)
 
 
 if __name__ == "__main__":

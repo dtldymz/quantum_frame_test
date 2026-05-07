@@ -27,29 +27,55 @@ def _emit_circuit(circuit, cir):
     raise ValueError(f"cir must be 'dict', 'qasm' or 'dag', got {cir!r}")
 
 
+def _scaled_values(arr, n):
+    x_min = float(np.min(arr))
+    x_max = float(np.max(arr))
+    if x_max == x_min:
+        return np.zeros(arr.size, dtype=np.int64)
+    return np.round((arr - x_min) / (x_max - x_min) * (2**n - 1)).astype(np.int64)
+
+
+def _minimal_scale_qubits(arr):
+    unique_vals = np.unique(arr)
+    k = len(unique_vals)
+    if k <= 1:
+        return 1
+
+    n = max(1, int(np.ceil(np.log2(k))))
+    while True:
+        scaled_unique = _scaled_values(unique_vals, n)
+        if len(np.unique(scaled_unique)) == k:
+            return n
+        n += 1
+
+
 class BasisEncoder(BaseEncoder):
     """Basis encoding using a divide-and-conquer decision tree."""
 
-    def __init__(self, n_qubits=None, repeat=False):
+    def __init__(self, n_qubits=None, redundant=False, repeat=None):
         self.n_qubits = n_qubits
-        self.repeat = repeat
+        if repeat is not None:
+            redundant = repeat
+        self.redundant = bool(redundant)
 
     def encode(self, data, *, cir="dict", backend=None):
         bk = _default_backend(backend)
-        arr = np.asarray(data, dtype=np.int64).ravel()
+        arr = np.asarray(data, dtype=float).ravel()
         if arr.size == 0:
             raise ValueError("data must be non-empty")
-        if np.any(arr < 0):
-            raise ValueError("data must contain non-negative integers")
 
-        max_val = int(np.max(arr))
-        min_n = max(1, max_val.bit_length()) if max_val > 0 else 1
+        # 先确定不会在缩放后发生碰撞的最小比特数
+        min_n = _minimal_scale_qubits(arr)
+
         if self.n_qubits is None:
             n = min_n
         else:
             n = max(min_n, int(self.n_qubits))
 
-        binary_strings = [format(int(v), f"0{n}b") for v in arr]
+        # 缩放使用 min_n，确保当 n > min_n 时高位始终为 0
+        scaled = _scaled_values(arr, min_n)
+
+        binary_strings = [format(int(v), f"0{n}b") for v in scaled]
         trie = self._build_trie(binary_strings)
 
         gates = []
@@ -67,7 +93,7 @@ class BasisEncoder(BaseEncoder):
         trie = {}
         frequencies = {}
         for s in binary_strings:
-            if self.repeat:
+            if self.redundant:
                 frequencies[s] = frequencies.get(s, 0) + 1
             elif s not in frequencies:
                 frequencies[s] = 1
