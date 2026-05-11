@@ -1,0 +1,242 @@
+import unittest
+from unittest import mock
+
+import numpy as np
+import torch
+
+from nexq import NPUBackend, StateVector, npu_runtime_context_from_env
+from nexq.channel.backends.npu_backend import is_npu_available
+
+
+class TestNPUBackend(unittest.TestCase):
+    def test_runtime_context_defaults(self):
+        with mock.patch.dict("os.environ", {}, clear=False):
+            ctx = npu_runtime_context_from_env()
+        self.assertEqual(ctx.world_size, 1)
+        self.assertEqual(ctx.rank, 0)
+        self.assertEqual(ctx.local_rank, 0)
+        self.assertFalse(ctx.distributed)
+
+    def test_runtime_context_from_env(self):
+        with mock.patch.dict(
+            "os.environ",
+            {"WORLD_SIZE": "4", "RANK": "2", "LOCAL_RANK": "1"},
+            clear=False,
+        ):
+            ctx = npu_runtime_context_from_env()
+        self.assertEqual(ctx.world_size, 4)
+        self.assertEqual(ctx.rank, 2)
+        self.assertEqual(ctx.local_rank, 1)
+        self.assertTrue(ctx.distributed)
+
+    def test_runtime_context_invalid_env(self):
+        with mock.patch.dict("os.environ", {"WORLD_SIZE": "abc"}, clear=False):
+            with self.assertRaises(ValueError):
+                npu_runtime_context_from_env()
+
+    def test_fallback_or_npu_device_selection(self):
+        backend = NPUBackend(fallback_to_cpu=True)
+        state = backend.zeros_state(1)
+
+        # Verify backend tensor creation works regardless of runtime availability.
+        self.assertEqual(tuple(state.shape), (2, 1))
+        probs = backend.to_numpy(backend.measure_probs(state))
+        self.assertTrue(np.allclose(probs, np.array([1.0, 0.0], dtype=np.float32), atol=1e-6))
+
+        if is_npu_available():
+            self.assertIn("device=npu", backend.name.lower())
+        else:
+            self.assertIn("device=cpu", backend.name.lower())
+
+    def test_raise_when_request_npu_without_fallback(self):
+        if is_npu_available():
+            backend = NPUBackend(device="npu:0", fallback_to_cpu=False)
+            self.assertIn("npu", backend.name.lower())
+            return
+
+        with self.assertRaises(RuntimeError):
+            NPUBackend(device="npu:0", fallback_to_cpu=False)
+
+    def test_statevector_pipeline(self):
+        backend = NPUBackend(fallback_to_cpu=True)
+        sv = StateVector.zero_state(2, backend)
+
+        probs = backend.to_numpy(sv.probabilities())
+        self.assertAlmostEqual(float(probs[0]), 1.0, places=6)
+        self.assertAlmostEqual(float(np.sum(probs)), 1.0, places=6)
+
+    def test_from_distributed_env(self):
+        with mock.patch.dict(
+            "os.environ",
+            {"WORLD_SIZE": "8", "RANK": "3", "LOCAL_RANK": "2"},
+            clear=False,
+        ):
+            backend = NPUBackend.from_distributed_env(fallback_to_cpu=True)
+
+        self.assertIsNotNone(backend.runtime_context)
+        self.assertEqual(backend.runtime_context.world_size, 8)
+        self.assertEqual(backend.runtime_context.rank, 3)
+        self.assertEqual(backend.runtime_context.local_rank, 2)
+        self.assertTrue(backend.runtime_context.distributed)
+
+    def test_complex_matmul_workaround_matches_torch(self):
+        backend = NPUBackend(fallback_to_cpu=True)
+        a = torch.tensor(
+            [[1 + 2j, 3 - 1j], [0.5 + 0.25j, -2j]],
+            dtype=torch.complex64,
+        )
+        b = torch.tensor(
+            [[2 - 0.5j], [1 + 4j]],
+            dtype=torch.complex64,
+        )
+
+        actual = backend._complex_matmul_workaround(a, b)
+        expected = torch.matmul(a, b)
+
+        self.assertTrue(torch.allclose(actual, expected, atol=1e-5, rtol=1e-5))
+
+    def test_abs_sq_workaround_matches_torch(self):
+        backend = NPUBackend(fallback_to_cpu=True)
+        t = torch.tensor([1 + 2j, -3 + 0j, 0 - 4j], dtype=torch.complex64)
+        expected = torch.abs(t) ** 2
+        # Force device label to npu to exercise workaround
+        backend._device = type("FakeDevice", (), {"type": "npu"})()
+        result = backend.abs_sq(t)
+        self.assertTrue(torch.allclose(result, expected, atol=1e-5))
+
+    def test_measure_probs_workaround_matches_parent(self):
+        from nexq.channel.backends.torch_backend import TorchBackend
+
+        ref_backend = TorchBackend()
+        state = ref_backend.zeros_state(2)
+
+        npu_backend = NPUBackend(fallback_to_cpu=True)
+        state_cast = npu_backend.cast(npu_backend.to_numpy(state))
+
+        # Force _is_npu_complex to return True so the workaround branch is taken
+        with mock.patch.object(NPUBackend, "_is_npu_complex", return_value=True):
+            probs_npu = npu_backend.to_numpy(npu_backend.measure_probs(state_cast))
+
+        probs_ref = ref_backend.to_numpy(ref_backend.measure_probs(state))
+        self.assertTrue(np.allclose(probs_npu, probs_ref, atol=1e-6))
+
+    def test_npu_complex_matmul_uses_workaround(self):
+        backend = NPUBackend(fallback_to_cpu=True)
+        backend._device = torch.device("cpu")
+        a = torch.tensor([[1 + 1j]], dtype=torch.complex64)
+        b = torch.tensor([[1 - 1j]], dtype=torch.complex64)
+
+        with mock.patch.object(
+            NPUBackend,
+            "_complex_matmul_workaround",
+            return_value=torch.tensor([[2 + 0j]], dtype=torch.complex64),
+        ) as workaround:
+            self.assertTrue(torch.allclose(backend.matmul(a, b), torch.matmul(a, b)))
+            workaround.assert_not_called()
+
+        backend._device = torch.device("meta")
+        backend._device = type("FakeDevice", (), {"type": "npu"})()
+        with mock.patch.object(
+            NPUBackend,
+            "_complex_matmul_workaround",
+            return_value=torch.tensor([[2 + 0j]], dtype=torch.complex64),
+        ) as workaround:
+            result = backend.matmul(a, b)
+            workaround.assert_called_once_with(a, b)
+            self.assertTrue(torch.equal(result, torch.tensor([[2 + 0j]], dtype=torch.complex64)))
+
+    # ──────── new operator workaround tests ────────
+
+    def _npu_backend_forced(self):
+        """Return an NPUBackend whose _is_npu_complex always returns True."""
+        backend = NPUBackend(fallback_to_cpu=True)
+        backend._patched_is_npu_complex = True
+        return backend
+
+    def _run_with_npu_forced(self, fn):
+        with mock.patch.object(NPUBackend, "_is_npu_complex", return_value=True):
+            return fn()
+
+    def test_kron_workaround_matches_torch(self):
+        backend = NPUBackend(fallback_to_cpu=True)
+        a = torch.tensor([[1 + 2j, 3j], [-1j, 2 - 1j]], dtype=torch.complex64)
+        b = torch.tensor([[0.5 - 1j], [1 + 0.5j]], dtype=torch.complex64)
+        expected = torch.kron(a, b)
+        result = self._run_with_npu_forced(lambda: backend.kron(a, b))
+        self.assertTrue(torch.allclose(result, expected, atol=1e-5))
+
+    def test_dagger_workaround_matches_torch(self):
+        backend = NPUBackend(fallback_to_cpu=True)
+        m = torch.tensor([[1 + 2j, 3 - 1j], [0 + 1j, -2 + 0j]], dtype=torch.complex64)
+        expected = torch.conj(torch.transpose(m, -2, -1))
+        result = self._run_with_npu_forced(lambda: backend.dagger(m))
+        self.assertTrue(torch.allclose(result, expected, atol=1e-5))
+
+    def test_trace_workaround_matches_torch(self):
+        backend = NPUBackend(fallback_to_cpu=True)
+        m = torch.tensor([[1 + 2j, 3j], [-1j, 4 - 1j]], dtype=torch.complex64)
+        expected = torch.trace(m)
+        result = self._run_with_npu_forced(lambda: backend.trace(m))
+        self.assertTrue(torch.allclose(result.unsqueeze(0), expected.unsqueeze(0), atol=1e-5))
+
+    def test_inner_product_workaround_matches_torch(self):
+        backend = NPUBackend(fallback_to_cpu=True)
+        bra = torch.tensor([[1 + 1j], [0 - 1j]], dtype=torch.complex64)
+        ket = torch.tensor([[0.5 + 0j], [1 - 0.5j]], dtype=torch.complex64)
+        b, k = bra.reshape(-1), ket.reshape(-1)
+        expected = torch.dot(torch.conj(b), k)
+        result = self._run_with_npu_forced(lambda: backend.inner_product(bra, ket))
+        self.assertTrue(torch.allclose(result.unsqueeze(0), expected.unsqueeze(0), atol=1e-5))
+
+    def test_partial_trace_workaround_matches_parent(self):
+        from nexq.channel.backends.torch_backend import TorchBackend
+        ref = TorchBackend()
+        # 2-qubit density matrix for |00><00|
+        rho = ref.zeros_state(2)
+        rho_dm = torch.matmul(rho, ref.dagger(rho))  # (4,4)
+
+        backend = NPUBackend(fallback_to_cpu=True)
+        rho_cast = backend.cast(backend.to_numpy(rho_dm))
+        expected = ref.to_numpy(ref.partial_trace(rho_dm, keep=[0], n_qubits=2))
+        result = self._run_with_npu_forced(
+            lambda: backend.to_numpy(backend.partial_trace(rho_cast, keep=[0], n_qubits=2))
+        )
+        self.assertTrue(np.allclose(result, expected, atol=1e-5))
+
+    def test_expectation_sv_workaround_matches_parent(self):
+        from nexq.channel.backends.torch_backend import TorchBackend
+        ref = TorchBackend()
+        state = ref.zeros_state(1)
+        # Z operator: [[1,0],[0,-1]]
+        z_op = ref.cast(np.array([[1, 0], [0, -1]], dtype=np.complex64))
+
+        backend = NPUBackend(fallback_to_cpu=True)
+        state_cast = backend.cast(backend.to_numpy(state))
+        op_cast = backend.cast(backend.to_numpy(z_op))
+
+        expected = float(ref.to_numpy(ref.expectation_sv(state, z_op)))
+        result = self._run_with_npu_forced(
+            lambda: float(backend.to_numpy(backend.expectation_sv(state_cast, op_cast)))
+        )
+        self.assertAlmostEqual(result, expected, places=5)
+
+    def test_expectation_dm_workaround_matches_parent(self):
+        from nexq.channel.backends.torch_backend import TorchBackend
+        ref = TorchBackend()
+        state = ref.zeros_state(1)
+        rho = torch.matmul(state, ref.dagger(state))
+        z_op = ref.cast(np.array([[1, 0], [0, -1]], dtype=np.complex64))
+
+        backend = NPUBackend(fallback_to_cpu=True)
+        rho_cast = backend.cast(backend.to_numpy(rho))
+        op_cast = backend.cast(backend.to_numpy(z_op))
+
+        expected = float(ref.to_numpy(ref.expectation_dm(rho, z_op)))
+        result = self._run_with_npu_forced(
+            lambda: float(backend.to_numpy(backend.expectation_dm(rho_cast, op_cast)))
+        )
+        self.assertAlmostEqual(result, expected, places=5)
+
+
+if __name__ == "__main__":
+    unittest.main()
