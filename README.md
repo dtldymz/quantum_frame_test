@@ -1,4 +1,4 @@
-# my_frame
+# quantum_frame
 
 一个用于量子门矩阵构造与简单量子线路计算的 Python 仓库，提供两套实现：
 
@@ -18,12 +18,13 @@
 ## 新增与改动要点
 
 - `Circuit` 类（在 `define_torch.py` 与 `define_mind.py` 中）：
+
   - 面向对象的线路表示，构造时**必须显式传入** `n_qubits`。
   - 支持 `+` 运算符表示“门序拼接”（`c1 + c2`），拼接前会检查 `n_qubits` 相等，否则抛出 `ValueError`。
   - 提供 `append()` / `extend()` 增量构建方法，以及 `unitary()` / `matrix()` 生成整体矩阵。
   - 为了兼容旧代码，函数式接口 `circuit(..., n_qubits=...)` 仍然可用，内部委托给 `Circuit(...).unitary()`。
-
 - `partial_trace`（在 `basic_torch.py` 与 `basic_mind.py` 中）：
+
   - 对方阵密度矩阵执行偏迹（reduced density matrix）。
   - 接口示例（PyTorch）：
     - `partial_trace(rho, keep, n_qubits=None)`
